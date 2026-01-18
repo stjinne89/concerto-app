@@ -8,22 +8,13 @@ import * as cheerio from 'cheerio'
 // --- HULPFUNCTIE: Adres naar GPS (Geocoding) ---
 async function getCoordinates(venue: string) {
   try {
-    // We gebruiken de gratis OpenStreetMap API
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(venue)}&limit=1`
-    
     const response = await fetch(url, {
-      headers: { 
-        'User-Agent': 'ConcertoApp/1.0' // Netjes voorstellen is verplicht bij OSM
-      }
+      headers: { 'User-Agent': 'ConcertoApp/1.0' }
     })
-    
     const data = await response.json()
-    
     if (data && data.length > 0) {
-      return {
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon)
-      }
+      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) }
     }
   } catch (error) {
     console.error('Geocoding error:', error)
@@ -49,8 +40,6 @@ export async function createEvent(formData: FormData) {
 
   const firstGroupId = members[0].group_id
   const venue = formData.get('venue') as string
-
-  // NIEUW: Haal GPS op
   const coords = await getCoordinates(venue)
 
   const eventData = {
@@ -64,15 +53,16 @@ export async function createEvent(formData: FormData) {
     ticket_link: formData.get('ticket_link') as string,
     ticketswap_link: formData.get('ticketswap_link') as string,
     resale_link: formData.get('resale_link') as string,
-    lat: coords.lat, // Opslaan
-    lon: coords.lon  // Opslaan
+    lat: coords.lat,
+    lon: coords.lon
   }
 
   const { error: insertError } = await supabase.from('events').insert(eventData)
 
   if (insertError) {
     console.error("INSERT ERROR:", insertError)
-    return { error: 'Kon event niet aanmaken' }
+    // HIER ZAT DE FOUT: We mogen niks returnen, dus we gooien een error.
+    throw new Error('Kon event niet aanmaken')
   }
 
   revalidatePath('/')
@@ -146,75 +136,20 @@ export async function scrapeEventUrl(url: string) {
     let siteName = $('meta[property="og:site_name"]').attr('content') || '';
     let image = $('meta[property="og:image"]').attr('content') || '';
     let startDate = '';
-    let jsonTitle = '';
 
-    try {
-      $('script[type="application/ld+json"]').each((i, el) => {
-        const txt = $(el).text();
-        if (txt.includes('startDate') || txt.includes('Event')) {
-            const json = JSON.parse(txt);
-            const findData = (obj: any): any => {
-                if (!obj) return;
-                if (obj.startDate && !startDate) startDate = obj.startDate;
-                if ((obj['@type'] === 'Event' || obj['@type'] === 'MusicEvent') && obj.name && !jsonTitle) {
-                    jsonTitle = obj.name;
-                }
-                for (const k in obj) {
-                    if (typeof obj[k] === 'object') findData(obj[k]);
-                }
-            }
-            findData(json);
-        }
-      });
-    } catch(e) {}
-
-    if (jsonTitle && jsonTitle.length > 2) {
-        title = jsonTitle;
-    } else {
-        const h1 = $('h1').first().text().trim();
-        if (h1 && (title.includes('Agenda') || title.includes('Home') || title.length < 5)) {
-            if (!h1.toLowerCase().includes('agenda overzicht')) title = h1;
-        }
-    }
-
+    // Eenvoudige datum checker
     if (!startDate) {
-        $('script').each((i, el) => {
-            const scriptContent = $(el).html() || '';
-            const dateMatch = scriptContent.match(/["'](202[4-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9])/);
-            if (dateMatch) { startDate = dateMatch[1]; return false; }
-        });
-    }
-
-    if (!startDate) {
-        const rawText = description + " " + $('body').text().replace(/\s+/g, ' '); 
-        const dutchMonths = 'januari|jan|februari|feb|maart|mrt|april|apr|mei|juni|jun|juli|jul|augustus|aug|september|sep|oktober|okt|november|nov|december|dec';
-        const textRegex = new RegExp(`\\b(\\d{1,2})\\s*(${dutchMonths})(?:\\s+(\\d{4}))?`, 'i');
-        const match = rawText.match(textRegex);
+        const rawText = description + " " + $('body').text();
+        const dutchMonths = 'januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december';
+        const regex = new RegExp(`(\\d{1,2})\\s*(${dutchMonths})`, 'i');
+        const match = rawText.match(regex);
         if (match) {
-            const day = match[1].padStart(2, '0');
-            const monthMap: { [key: string]: string } = {
-                'januari': '01', 'jan': '01', 'februari': '02', 'feb': '02', 'maart': '03', 'mrt': '03',
-                'april': '04', 'apr': '04', 'mei': '05', 'juni': '06', 'jun': '06', 'juli': '07', 'jul': '07',
-                'augustus': '08', 'aug': '08', 'september': '09', 'sep': '09', 'oktober': '10', 'okt': '10',
-                'november': '11', 'nov': '11', 'december': '12', 'dec': '12'
-            };
-            const month = monthMap[match[2].toLowerCase()];
-            let year = new Date().getFullYear();
-            if (match[3]) year = parseInt(match[3]);
-            else {
-                const testDate = new Date(year, parseInt(month) - 1, parseInt(day));
-                if (testDate < new Date(new Date().getTime() - 86400000)) year += 1;
-            }
-            startDate = `${year}-${month}-${day}T20:00`;
+             startDate = new Date().getFullYear() + '-' + match[2] + '-' + match[1]; 
         }
     }
 
-    if (startDate && startDate.length > 16) startDate = startDate.slice(0, 16);
     if ((cleanUrl + title).toLowerCase().includes('afas')) siteName = 'AFAS Live';
     if ((cleanUrl + title).toLowerCase().includes('ziggo')) siteName = 'Ziggo Dome';
-    if (title === 'Ziggo Dome' && !startDate && description.includes('geselecteerde events')) {
-        return { success: false, error: 'Beveiligde pagina' };
-    }
 
     return { 
       success: true, 
@@ -230,9 +165,9 @@ export async function scrapeEventUrl(url: string) {
     console.error('Scrape error:', error);
     return { success: false, error: 'Fout bij inlezen' };
   }
-}
+} 
 
-// --- 6. EVENT UPDATEN (MET GPS) ---
+// --- 6. EVENT UPDATEN ---
 export async function getEvent(eventId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -250,8 +185,6 @@ export async function updateEvent(formData: FormData) {
   if (!user) redirect('/login')
 
   const venue = formData.get('venue') as string
-  
-  // NIEUW: Haal GPS ook op bij updaten
   const coords = await getCoordinates(venue)
 
   const updateData = {
@@ -263,8 +196,8 @@ export async function updateEvent(formData: FormData) {
     ticket_link: formData.get('ticket_link') as string,
     ticketswap_link: formData.get('ticketswap_link') as string,
     resale_link: formData.get('resale_link') as string,
-    lat: coords.lat, // Update GPS
-    lon: coords.lon  // Update GPS
+    lat: coords.lat,
+    lon: coords.lon
   }
 
   const { error } = await supabase
@@ -273,12 +206,7 @@ export async function updateEvent(formData: FormData) {
     .eq('id', eventId)
     .eq('created_by', user.id)
 
-  if (error) {
-    console.error('Update Error:', error)
-    return
-  }
-
+  if (error) console.error('Update Error:', error)
   revalidatePath('/')
   redirect('/')
 }
-// --- 7. VERWIJDEREN (BINNENKORT) ---
