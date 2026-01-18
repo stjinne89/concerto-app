@@ -1,6 +1,6 @@
 [build]
   command = "npm run build"
-  publish = ".next"
+  # We halen de 'publish' regel hier weg!
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
