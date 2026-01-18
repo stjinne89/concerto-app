@@ -1,5 +1,7 @@
 [build]
   command = "npm run build"
+  # Let op: We geven HIER GEEN publish map op. 
+  # De plugin hieronder regelt dat automatisch.
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
