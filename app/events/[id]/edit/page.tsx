@@ -2,11 +2,11 @@
 
 import { updateEvent, getEvent, scrapeEventUrl } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 
-// Dit is nodig om de ID uit de URL te lezen in Next.js
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
-  // We ontpakken de params (Next.js 15 manier)
+  // Params uitpakken (Next.js 15 style)
   const { id } = use(params)
   
   const [loading, setLoading] = useState(false)
@@ -24,12 +24,12 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     resale_link: ''
   })
 
-  // 1. DATA OPHALEN BIJ STARTEN
+  // 1. DATA OPHALEN
   useEffect(() => {
     const loadData = async () => {
       const { data, error } = await getEvent(id)
       if (data) {
-        // Datum formatteren voor het input veld (yyyy-MM-ddThh:mm)
+        // Datum formatteren voor de input (yyyy-MM-ddThh:mm)
         const dateStr = data.start_at ? new Date(data.start_at).toISOString().slice(0, 16) : ''
         
         setFormData({
@@ -48,7 +48,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     loadData()
   }, [id])
 
-  // 2. SCRAPER (Handig als je data wilt verversen met een betere link)
+  // 2. SCRAPER LOGICA
   const handleAutoFill = async () => {
     if (!scrapeUrl) return
     setLoading(true)
@@ -66,104 +66,178 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     setLoading(false)
   }
 
-  if (isFetching) return <div className="p-10 text-center">Laden...</div>
+  if (isFetching) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
+        <Loader2 className="animate-spin mr-2" /> Laden...
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-sm p-6">
-        <h1 className="text-xl font-bold mb-6">Bewerk Activiteit</h1>
+    <main className="min-h-screen bg-slate-950 text-slate-200 p-6 pb-24 selection:bg-violet-500/30">
+      <div className="max-w-lg mx-auto">
         
-        {/* Scraper Balk */}
-        <div className="bg-indigo-50 p-4 rounded-lg mb-6 border border-indigo-100">
-          <label className="block text-xs font-semibold text-indigo-800 uppercase mb-2 flex items-center gap-1">
-            <Sparkles size={14} /> 
+        {/* Header */}
+        <header className="flex items-center justify-between mb-8">
+          <Link href="/" className="text-slate-500 hover:text-white transition-colors flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+            <ArrowLeft size={14} /> Terug
+          </Link>
+          <h1 className="text-xl font-black tracking-tighter text-white">Bewerk Event</h1>
+          <div className="w-12"></div>
+        </header>
+        
+        {/* Scraper Balk - Nu in Dark Style */}
+        <div className="bg-violet-500/10 border border-violet-500/20 p-5 rounded-[1.5rem] mb-8">
+          <label className="block text-[10px] font-black text-violet-300 uppercase mb-3 flex items-center gap-2 tracking-widest">
+            <Sparkles size={12} /> 
             Overschrijven met AI
           </label>
           <div className="flex gap-2">
             <input 
               type="url" 
-              placeholder="Nieuwe link om te scrapen..." 
+              placeholder="Plak hier een link..." 
               value={scrapeUrl}
               onChange={(e) => setScrapeUrl(e.target.value)}
-              className="flex-1 text-sm rounded-md border border-indigo-200 px-3 py-2 focus:outline-none focus:border-indigo-500"
+              className="flex-1 bg-slate-950/50 border border-violet-500/30 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-400 placeholder:text-violet-500/30 transition-all"
             />
             <button 
               type="button"
               onClick={handleAutoFill}
               disabled={loading}
-              className="bg-indigo-600 text-white px-3 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              className="bg-violet-600 text-white px-4 rounded-xl hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-[0_0_15px_rgba(124,58,237,0.3)]"
             >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : <Link2 size={18} />}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <Link2 size={20} />}
             </button>
           </div>
         </div>
 
-        <form action={updateEvent} className="space-y-4">
+        <form action={updateEvent} className="space-y-6">
           
-          {/* BELANGRIJK: Het ID moet mee naar de server! */}
           <input type="hidden" name="event_id" value={id} />
 
-          {/* TITEL & TYPE */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Titel</label>
-                <input name="title" required type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Type</label>
-                <select name="type" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none">
-                <option value="concert">Concert</option>
-                <option value="festival">Festival</option>
-                <option value="listening_session">Luistersessie</option>
-                <option value="other">Anders</option>
-                </select>
-            </div>
-          </div>
+          {/* Formulier Card */}
+          <div className="bg-slate-900/50 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
 
-          {/* DATUM & VENUE */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Datum</label>
-                <input name="start_at" required type="datetime-local" value={formData.start_at} onChange={e => setFormData({...formData, start_at: e.target.value})} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Locatie</label>
-                <input name="venue" required type="text" value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none" />
-            </div>
-          </div>
-
-          {/* OMSCHRIJVING */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Info</label>
-            <textarea name="description" rows={2} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none" />
-          </div>
-
-          {/* TICKET LINKS */}
-          <div className="pt-2 border-t border-gray-100">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Ticket Links</h3>
-            <div className="space-y-3">
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Ticket size={16} className="text-gray-400" /></div>
-                    <input name="ticket_link" type="url" placeholder="Officiele Verkoop Link" value={formData.ticket_link} onChange={e => setFormData({...formData, ticket_link: e.target.value})} className="pl-10 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+            {/* TITEL & TYPE */}
+            <div className="space-y-6">
+                <div>
+                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Titel</label>
+                    <input 
+                        name="title" required type="text" 
+                        value={formData.title} 
+                        onChange={e => setFormData({...formData, title: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
+                    />
                 </div>
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Repeat size={16} className="text-gray-400" /></div>
-                    <input name="ticketswap_link" type="url" placeholder="TicketSwap Link" value={formData.ticketswap_link} onChange={e => setFormData({...formData, ticketswap_link: e.target.value})} className="pl-10 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
-                </div>
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><RefreshCw size={16} className="text-gray-400" /></div>
-                    <input name="resale_link" type="url" placeholder="Extra Resale" value={formData.resale_link} onChange={e => setFormData({...formData, resale_link: e.target.value})} className="pl-10 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                <div>
+                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Type</label>
+                    <select 
+                        name="type" 
+                        value={formData.type} 
+                        onChange={e => setFormData({...formData, type: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer"
+                    >
+                        <option value="concert" className="bg-slate-900">Concert</option>
+                        <option value="festival" className="bg-slate-900">Festival</option>
+                        <option value="listening_session" className="bg-slate-900">Luistersessie</option>
+                        <option value="club_night" className="bg-slate-900">Club Night</option>
+                        <option value="other" className="bg-slate-900">Anders</option>
+                    </select>
                 </div>
             </div>
+
+            {/* DATUM & VENUE */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Datum</label>
+                    <input 
+                        name="start_at" required type="datetime-local" 
+                        value={formData.start_at} 
+                        onChange={e => setFormData({...formData, start_at: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all [color-scheme:dark]"
+                    />
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Locatie</label>
+                    <input 
+                        name="venue" required type="text" 
+                        value={formData.venue} 
+                        onChange={e => setFormData({...formData, venue: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
+                    />
+                </div>
+            </div>
+
+            {/* OMSCHRIJVING */}
+            <div>
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Info</label>
+                <textarea 
+                    name="description" rows={3} 
+                    value={formData.description} 
+                    onChange={e => setFormData({...formData, description: e.target.value})} 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all resize-none"
+                />
+            </div>
+
+            {/* TICKET LINKS - Dark Mode style */}
+            <div className="pt-6 border-t border-white/5 space-y-4">
+                <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Ticket Links</h3>
+                
+                <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Ticket size={16} className="text-slate-500 group-focus-within:text-violet-400 transition-colors" />
+                    </div>
+                    <input 
+                        name="ticket_link" type="url" placeholder="Officiele Verkoop Link" 
+                        value={formData.ticket_link} 
+                        onChange={e => setFormData({...formData, ticket_link: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
+                    />
+                </div>
+
+                <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Repeat size={16} className="text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                    </div>
+                    <input 
+                        name="ticketswap_link" type="url" placeholder="TicketSwap Link" 
+                        value={formData.ticketswap_link} 
+                        onChange={e => setFormData({...formData, ticketswap_link: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                    />
+                </div>
+
+                <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" />
+                    </div>
+                    <input 
+                        name="resale_link" type="url" placeholder="Extra Resale" 
+                        value={formData.resale_link} 
+                        onChange={e => setFormData({...formData, resale_link: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
+                    />
+                </div>
+            </div>
+
           </div>
 
-          <div className="pt-4 flex gap-3">
-             <a href="/" className="flex-1 text-center py-2 px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Annuleren</a>
-            <button type="submit" className="flex-1 py-2 px-4 border border-transparent rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Opslaan</button>
+          {/* Actie Knoppen */}
+          <div className="pt-4 flex flex-col gap-4">
+            <button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] transition-all shadow-lg shadow-violet-900/20 active:scale-[0.98]"
+            >
+                Wijzigingen Opslaan
+            </button>
+            <Link href="/" className="text-center text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors py-2">
+                Annuleren
+            </Link>
           </div>
 
         </form>
       </div>
-    </div>
+    </main>
   )
 }

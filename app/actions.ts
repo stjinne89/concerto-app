@@ -5,7 +5,16 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
 
-// --- HULPFUNCTIE: Adres naar GPS (Geocoding) ---
+// --- HULPFUNCTIE 1: Tijdzone Correctie (1-2 uur verschil fix) ---
+function fixTimezoneOffset(dateString: string) {
+  if (!dateString) return null
+  const inputAsUtc = new Date(dateString)
+  const amsterdamDate = new Date(inputAsUtc.toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' }))
+  const offset = amsterdamDate.getTime() - inputAsUtc.getTime()
+  return new Date(inputAsUtc.getTime() - offset).toISOString()
+}
+
+// --- HULPFUNCTIE 2: Adres naar GPS (Geocoding) ---
 async function getCoordinates(venue: string) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(venue)}&limit=1`
@@ -29,6 +38,7 @@ export async function createEvent(formData: FormData) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) redirect('/login')
 
+  // Check groepslidmaatschap (zoals in je originele code)
   const { data: members, error: memberError } = await supabase
     .from('group_members')
     .select('group_id')
@@ -39,15 +49,20 @@ export async function createEvent(formData: FormData) {
   }
 
   const firstGroupId = members[0].group_id
+  
+  // Data voorbereiden
   const venue = formData.get('venue') as string
   const coords = await getCoordinates(venue)
+  
+  const rawDate = formData.get('start_at') as string
+  const fixedDate = fixTimezoneOffset(rawDate) // Tijdzone fix toepassen!
 
   const eventData = {
     group_id: firstGroupId,
     created_by: user.id,
     title: formData.get('title') as string,
     event_type: formData.get('type') as string,
-    start_at: formData.get('start_at') as string,
+    start_at: fixedDate, // De gecorrigeerde datum
     venue_name: venue,
     description: formData.get('description') as string,
     ticket_link: formData.get('ticket_link') as string,
@@ -61,7 +76,6 @@ export async function createEvent(formData: FormData) {
 
   if (insertError) {
     console.error("INSERT ERROR:", insertError)
-    // HIER ZAT DE FOUT: We mogen niks returnen, dus we gooien een error.
     throw new Error('Kon event niet aanmaken')
   }
 
@@ -87,7 +101,7 @@ export async function toggleRSVP(eventId: string, status: string) {
   revalidatePath('/')
 }
 
-// --- 3. CHAT BERICHT STUREN ---
+// --- 3. CHAT BERICHT STUREN (DEZE MISTE JE!) ---
 export async function sendMessage(eventId: string, content: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -102,6 +116,7 @@ export async function sendMessage(eventId: string, content: string) {
     })
 
   if (error) console.error('Chat Error:', error)
+  revalidatePath('/')
 }
 
 // --- 4. UITLOGGEN ---
@@ -186,11 +201,14 @@ export async function updateEvent(formData: FormData) {
 
   const venue = formData.get('venue') as string
   const coords = await getCoordinates(venue)
+  
+  const rawDate = formData.get('start_at') as string
+  const fixedDate = fixTimezoneOffset(rawDate) // Tijdzone fix!
 
   const updateData = {
     title: formData.get('title') as string,
     event_type: formData.get('type') as string,
-    start_at: formData.get('start_at') as string,
+    start_at: fixedDate, // Gecorrigeerde tijd opslaan
     venue_name: venue,
     description: formData.get('description') as string,
     ticket_link: formData.get('ticket_link') as string,
