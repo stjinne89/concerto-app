@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
 
-// --- HULPFUNCTIE 1: Tijdzone Correctie (1-2 uur verschil fix) ---
+// --- HULPFUNCTIES ---
+
 function fixTimezoneOffset(dateString: string) {
   if (!dateString) return null
   const inputAsUtc = new Date(dateString)
@@ -14,7 +15,6 @@ function fixTimezoneOffset(dateString: string) {
   return new Date(inputAsUtc.getTime() - offset).toISOString()
 }
 
-// --- HULPFUNCTIE 2: Adres naar GPS (Geocoding) ---
 async function getCoordinates(venue: string) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(venue)}&limit=1`
@@ -31,7 +31,64 @@ async function getCoordinates(venue: string) {
   return { lat: null, lon: null }
 }
 
-// --- 1. EVENT AANMAKEN ---
+// --- AUTHENTICATIE (LOGIN & SIGNUP) ---
+
+export async function login(formData: FormData) {
+  const supabase = await createClient()
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error) {
+    return redirect('/login?error=Kan niet inloggen')
+  }
+
+  revalidatePath('/', 'layout')
+  redirect('/')
+}
+
+export async function signup(formData: FormData) {
+  const supabase = await createClient()
+  
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const fullName = formData.get('full_name') as string
+
+  if (!fullName) {
+    return redirect('/login?error=Naam is verplicht')
+  }
+
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName, // Dit zorgt dat de naam mee gaat naar de DB
+      },
+    },
+  })
+
+  if (error) {
+    console.error('Signup error:', error)
+    return redirect('/login?error=Registratie mislukt')
+  }
+
+  revalidatePath('/', 'layout')
+  redirect('/')
+}
+
+export async function signOut() {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect('/login')
+}
+
+// --- EVENTS ---
+
 export async function createEvent(formData: FormData) {
   const supabase = await createClient()
 
@@ -44,7 +101,6 @@ export async function createEvent(formData: FormData) {
     .eq('user_id', user.id)
   
   if (memberError || !members || members.length === 0) {
-    // Voorkom crash als user geen member is, maar log error
     console.error('User is geen member van een groep')
     throw new Error('Je bent geen lid van een groep!')
   }
@@ -83,7 +139,80 @@ export async function createEvent(formData: FormData) {
   redirect('/')
 }
 
-// --- 2. RSVP (AANWEZIGHEID) ---
+export async function updateEvent(formData: FormData) {
+  const supabase = await createClient()
+  const eventId = formData.get('event_id') as string
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const venue = formData.get('venue') as string
+  const coords = await getCoordinates(venue)
+  
+  const rawDate = formData.get('start_at') as string
+  const fixedDate = fixTimezoneOffset(rawDate) 
+
+  const updateData = {
+    title: formData.get('title') as string,
+    event_type: formData.get('type') as string,
+    start_at: fixedDate, 
+    venue_name: venue,
+    description: formData.get('description') as string,
+    ticket_link: formData.get('ticket_link') as string,
+    ticketswap_link: formData.get('ticketswap_link') as string,
+    resale_link: formData.get('resale_link') as string,
+    lat: coords.lat,
+    lon: coords.lon
+  }
+
+  const { error } = await supabase
+    .from('events')
+    .update(updateData)
+    .eq('id', eventId)
+    .eq('created_by', user.id)
+
+  if (error) console.error('Update Error:', error)
+  revalidatePath('/')
+  redirect('/')
+}
+
+export async function deleteEvent(eventId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) redirect('/login')
+
+  const { error, count } = await supabase
+    .from('events')
+    .delete({ count: 'exact' }) 
+    .eq('id', eventId)
+    .eq('created_by', user.id) 
+
+  if (error) {
+    console.error('Delete Error:', error)
+    throw new Error('Database fout bij verwijderen')
+  }
+
+  if (count === 0) {
+    console.error('Geen event verwijderd. Mogelijk geen rechten.')
+    throw new Error('Kon event niet verwijderen: Je bent waarschijnlijk niet de eigenaar.')
+  }
+
+  revalidatePath('/')
+  redirect('/')
+}
+
+export async function getEvent(eventId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', eventId)
+    .single()
+  return { data, error }
+}
+
+// --- OVERIGE ACTIES (RSVP, CHAT, SCRAPER) ---
+
 export async function toggleRSVP(eventId: string, status: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -101,7 +230,6 @@ export async function toggleRSVP(eventId: string, status: string) {
   revalidatePath('/')
 }
 
-// --- 3. CHAT BERICHT STUREN ---
 export async function sendMessage(eventId: string, content: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -119,14 +247,6 @@ export async function sendMessage(eventId: string, content: string) {
   revalidatePath('/')
 }
 
-// --- 4. UITLOGGEN ---
-export async function signOut() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  redirect('/login')
-}
-
-// --- 5. LINK PREVIEW (SCRAPER) ---
 export async function scrapeEventUrl(url: string) {
   const cleanUrl = url.split('?')[0];
   
@@ -177,80 +297,4 @@ export async function scrapeEventUrl(url: string) {
     console.error('Scrape error:', error);
     return { success: false, error: 'Fout bij inlezen' };
   }
-} 
-
-// --- 6. EVENT UPDATEN ---
-export async function getEvent(eventId: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('events')
-    .select('*')
-    .eq('id', eventId)
-    .single()
-  return { data, error }
-}
-
-export async function updateEvent(formData: FormData) {
-  const supabase = await createClient()
-  const eventId = formData.get('event_id') as string
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const venue = formData.get('venue') as string
-  const coords = await getCoordinates(venue)
-  
-  const rawDate = formData.get('start_at') as string
-  const fixedDate = fixTimezoneOffset(rawDate) 
-
-  const updateData = {
-    title: formData.get('title') as string,
-    event_type: formData.get('type') as string,
-    start_at: fixedDate, 
-    venue_name: venue,
-    description: formData.get('description') as string,
-    ticket_link: formData.get('ticket_link') as string,
-    ticketswap_link: formData.get('ticketswap_link') as string,
-    resale_link: formData.get('resale_link') as string,
-    lat: coords.lat,
-    lon: coords.lon
-  }
-
-  const { error } = await supabase
-    .from('events')
-    .update(updateData)
-    .eq('id', eventId)
-    .eq('created_by', user.id)
-
-  if (error) console.error('Update Error:', error)
-  revalidatePath('/')
-  redirect('/')
-}
-
-// --- 7. EVENT VERWIJDEREN (Verbeterd) ---
-export async function deleteEvent(eventId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) redirect('/login')
-
-  // We voegen { count: 'exact' } toe om te tellen hoeveel we verwijderen
-  const { error, count } = await supabase
-    .from('events')
-    .delete({ count: 'exact' }) 
-    .eq('id', eventId)
-    .eq('created_by', user.id) 
-
-  if (error) {
-    console.error('Delete Error:', error)
-    throw new Error('Database fout bij verwijderen')
-  }
-
-  // Als count 0 is, betekent het dat de regel niet verwijderd mocht worden (door RLS) of niet bestond
-  if (count === 0) {
-    console.error('Geen event verwijderd. Mogelijk geen rechten.')
-    throw new Error('Kon event niet verwijderen: Je bent waarschijnlijk niet de eigenaar.')
-  }
-
-  revalidatePath('/')
-  redirect('/')
 }

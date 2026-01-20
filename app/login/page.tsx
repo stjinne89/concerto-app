@@ -1,51 +1,127 @@
-import { login, signup } from './actions'
-import Image from 'next/image'
+'use client'
+
+import { login, signup } from '@/app/actions'
+import { useState, Suspense, useEffect } from 'react' // <-- Hier is 'useEffect' toegevoegd!
+import { useSearchParams } from 'next/navigation'
+import { Loader2, AlertCircle } from 'lucide-react'
+
+// Klein hulpcomponentje om errors te lezen uit de URL
+function ErrorMessage() {
+  const searchParams = useSearchParams()
+  const error = searchParams.get('error')
+  
+  if (!error) return null
+
+  return (
+    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-6 flex items-center gap-3 text-red-400 text-sm font-bold">
+      <AlertCircle size={16} />
+      {error}
+    </div>
+  )
+}
 
 export default function LoginPage() {
+  const searchParams = useSearchParams()
+  
+  // Hier definiëren we alle 'state' variabelen
+  const [isLoginMode, setIsLoginMode] = useState(true)
+  const [loading, setLoading] = useState(false) // <-- Deze miste, is nu toegevoegd!
+
+  // Dit effect kijkt of er een error in de URL staat en schakelt naar 'Registreren' indien nodig
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error && error.toLowerCase().includes('registratie')) {
+      setIsLoginMode(false) 
+    }
+  }, [searchParams])
+
   return (
-    <main className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+    <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem] shadow-2xl">
-          <div className="text-center mb-8">
- <h1 className="text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400 mb-2">
-  Concerto
-</h1>
-  <p className="text-slate-400 text-sm">Log in om te zien waar je bij wil zijn</p>
-</div>
+        
+        <div className="text-center mb-8">
+           <h1 className="text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400 mb-2">
+            Concerto
+          </h1>
+          <p className="text-slate-400 text-sm">
+            {isLoginMode ? 'Log in om je agenda te beheren' : 'Maak een account aan en doe mee'}
+          </p>
+        </div>
 
-          <form className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 ml-1" htmlFor="email">Email</label>
+        <div className="bg-slate-900/50 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl">
+          
+          <Suspense>
+            <ErrorMessage />
+          </Suspense>
+
+          <form action={isLoginMode ? login : signup} onSubmit={() => setLoading(true)} className="space-y-5">
+            
+            {!isLoginMode && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-4 duration-300">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">
+                  Je Naam
+                </label>
+                <input 
+                  name="full_name" 
+                  type="text" 
+                  required={!isLoginMode}
+                  placeholder="Hoe mogen we je noemen?" 
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">
+                  Email
+                </label>
               <input 
-                id="email" name="email" type="email" required 
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
-                placeholder="naam@voorbeeld.nl"
+                name="email" 
+                type="email" 
+                required 
+                placeholder="naam@voorbeeld.nl" 
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
               />
             </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 ml-1" htmlFor="password">Wachtwoord</label>
+
+            <div className="space-y-2">
+               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">
+                  Wachtwoord
+                </label>
               <input 
-                id="password" name="password" type="password" required 
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
-                placeholder="••••••••"
+                name="password" 
+                type="password" 
+                required 
+                placeholder="••••••••" 
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
               />
             </div>
 
-            <div className="flex flex-col gap-3 pt-4">
-              <button 
-                formAction={login}
-                className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-3 rounded-2xl transition-all shadow-lg shadow-violet-600/20 active:scale-[0.98]"
-              >
-                Inloggen
-              </button>
-              <button 
-                formAction={signup}
-                className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-3 rounded-2xl border border-white/10 transition-all active:scale-[0.98]"
-              >
-                Account aanmaken
-              </button>
-            </div>
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] transition-all shadow-lg shadow-violet-900/20 active:scale-[0.98] mt-4 flex justify-center items-center"
+            >
+              {loading ? <Loader2 className="animate-spin" /> : (isLoginMode ? 'Inloggen' : 'Account Aanmaken')}
+            </button>
           </form>
+
+          <div className="mt-6 text-center">
+            <button 
+              onClick={() => {
+                setIsLoginMode(!isLoginMode)
+                setLoading(false)
+              }}
+              className="text-xs text-slate-400 hover:text-white transition-colors"
+            >
+              {isLoginMode ? (
+                <span>Nog geen account? <strong className="text-violet-400 ml-1">Registreren</strong></span>
+              ) : (
+                <span>Al een account? <strong className="text-violet-400 ml-1">Inloggen</strong></span>
+              )}
+            </button>
+          </div>
+
         </div>
       </div>
     </main>
