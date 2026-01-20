@@ -1,7 +1,8 @@
 'use client'
 
 import { createClient } from '@/utils/supabase/client'
-import { sendMessage } from '@/app/actions'
+// Zorg dat markChatAsRead in je actions.ts staat!
+import { sendMessage, markChatAsRead } from '@/app/actions'
 import { useEffect, useState, useRef } from 'react'
 import { Send, MessageCircle } from 'lucide-react'
 
@@ -13,12 +14,22 @@ type Message = {
   profiles: { full_name: string | null, email: string } | null
 }
 
-export default function EventChat({ eventId, currentUserId }: { eventId: string, currentUserId: string }) {
+// 1. Hier voegen we 'hasUnread' toe aan de props
+export default function EventChat({ eventId, currentUserId, hasUnread }: { eventId: string, currentUserId: string, hasUnread: boolean }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  // 2. Als de chat opent én er zijn ongelezen berichten -> Markeer als gelezen
+  useEffect(() => {
+    if (isOpen && hasUnread) {
+        // We roepen de server action aan. 
+        // Door revalidatePath in de action zal de pagina verversen en 'hasUnread' false worden.
+        markChatAsRead(eventId).catch(console.error)
+    }
+  }, [isOpen, hasUnread, eventId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -31,10 +42,12 @@ export default function EventChat({ eventId, currentUserId }: { eventId: string,
       if (data) setMessages(data as any)
     }
     fetchMessages()
+    
     const channel = supabase
       .channel(`chat-${eventId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `event_id=eq.${eventId}` }, 
       (payload) => {
+        // Alleen nieuwe berichten toevoegen als ze niet van jezelf zijn (optimistic update vangt eigen berichten al af)
         if (payload.new.user_id !== currentUserId) {
             const fetchNewMsg = async () => {
                 const { data } = await supabase.from('messages').select('*, profiles(full_name, email)').eq('id', payload.new.id).single()
@@ -44,9 +57,11 @@ export default function EventChat({ eventId, currentUserId }: { eventId: string,
         }
       })
       .subscribe()
+      
     return () => { supabase.removeChannel(channel) }
   }, [eventId, isOpen, supabase, currentUserId])
 
+  // Scroll naar beneden bij nieuw bericht
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, isOpen])
@@ -55,11 +70,14 @@ export default function EventChat({ eventId, currentUserId }: { eventId: string,
     if (!input.trim()) return
     const text = input
     setInput('') 
+    
+    // Optimistic UI update
     const optimisticMsg: Message = {
         id: Math.random().toString(), content: text, user_id: currentUserId, created_at: new Date().toISOString(),
         profiles: { full_name: 'Ik', email: 'ik' } 
     }
     setMessages((prev) => [...prev, optimisticMsg])
+    
     await sendMessage(eventId, text)
   }
 
@@ -74,17 +92,28 @@ export default function EventChat({ eventId, currentUserId }: { eventId: string,
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
-          className="flex items-center justify-center gap-2 text-sm text-slate-600 hover:text-violet-600 font-bold py-2 w-full bg-slate-50 rounded-xl transition-colors"
+          className="relative flex items-center justify-center gap-2 text-sm text-slate-600 hover:text-violet-600 font-bold py-2 w-full bg-slate-50 rounded-xl transition-colors group"
         >
-          <MessageCircle size={18} />
-          Praat mee {messages.length > 0 && <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">{messages.length}</span>}
+          <div className="relative">
+            <MessageCircle size={18} />
+            
+            {/* 3. HET RODE BOLLETJE (Alleen als hasUnread true is) */}
+            {hasUnread && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-50 animate-pulse"></span>
+            )}
+          </div>
+          
+          Praat mee 
+          {messages.length > 0 && !hasUnread && (
+            <span className="text-xs bg-slate-200 text-slate-600 group-hover:bg-violet-100 group-hover:text-violet-700 px-1.5 py-0.5 rounded-full transition-colors">
+                {messages.length}
+            </span>
+          )}
         </button>
       )}
 
       {isOpen && (
-        // NIEUWE STIJL: Chat venster
         <div className="bg-slate-50 rounded-2xl p-3 mt-2 ring-1 ring-slate-100">
-           {/* Header met sluit knop */}
            <div className="flex justify-between items-center mb-2 px-1">
              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Community Chat</h4>
              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 text-xs font-medium py-1 px-2">Sluiten</button>
@@ -103,7 +132,6 @@ export default function EventChat({ eventId, currentUserId }: { eventId: string,
                     {displayName}
                   </span>
                   
-                  {/* NIEUWE BUBBLES: Gradient voor jou, zacht grijs voor anderen */}
                   <div className={`px-4 py-2 rounded-2xl text-sm max-w-[85%] shadow-sm leading-relaxed ${
                     isMe 
                       ? 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white rounded-tr-none' 

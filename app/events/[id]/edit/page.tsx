@@ -1,6 +1,5 @@
 'use client'
 
-// Vergeet 'deleteEvent' niet in de import hieronder!
 import { updateEvent, getEvent, scrapeEventUrl, deleteEvent } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
 import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2 } from 'lucide-react'
@@ -12,7 +11,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(false)
   const [scrapeUrl, setScrapeUrl] = useState('')
   const [isFetching, setIsFetching] = useState(true)
-  const [isDeleting, setIsDeleting] = useState(false) // Nieuwe state voor verwijderen
+  const [isDeleting, setIsDeleting] = useState(false)
   
   const [formData, setFormData] = useState({
     title: '',
@@ -64,7 +63,6 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     setLoading(false)
   }
 
-  // NIEUW: De functie die het verwijderen regelt
   const handleDelete = async () => {
     if (confirm('Weet je zeker dat je dit event wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
       setIsDeleting(true)
@@ -121,11 +119,6 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
 
           <div className="bg-slate-900/50 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
             
-            {/* ... ALLE VELDEN (Titel, Datum, Type etc) BLIJVEN HETZELFDE ... */}
-            {/* Om ruimte te besparen heb ik de inputs hier even ingeklapt, 
-                maar je kunt de inputs uit je vorige bestand hier gewoon laten staan 
-                of kopieer ze uit het vorige antwoord als je ze kwijt bent. */}
-            
             <div className="space-y-6">
                 <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Titel</label>
@@ -154,30 +147,9 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                 </div>
             </div>
 
-            <div>
-                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Info</label>
-                <textarea name="description" rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all resize-none" />
-            </div>
-
-            <div className="pt-6 border-t border-white/5 space-y-4">
-                <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Ticket Links</h3>
-                <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Ticket size={16} className="text-slate-500 group-focus-within:text-violet-400 transition-colors" /></div>
-                    <input name="ticket_link" type="url" placeholder="Officiele Verkoop Link" value={formData.ticket_link} onChange={e => setFormData({...formData, ticket_link: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all" />
-                </div>
-                <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Repeat size={16} className="text-slate-500 group-focus-within:text-cyan-400 transition-colors" /></div>
-                    <input name="ticketswap_link" type="url" placeholder="TicketSwap Link" value={formData.ticketswap_link} onChange={e => setFormData({...formData, ticketswap_link: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all" />
-                </div>
-                <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" /></div>
-                    <input name="resale_link" type="url" placeholder="Extra Resale" value={formData.resale_link} onChange={e => setFormData({...formData, resale_link: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all" />
-                </div>
-            </div>
-
+            
           </div>
 
-          {/* Actie Knoppen */}
           <div className="pt-4 space-y-4">
             <button 
                 type="submit" 
@@ -186,7 +158,6 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                 Wijzigingen Opslaan
             </button>
             
-            {/* NIEUWE VERWIJDER KNOP */}
             <button 
                 type="button"
                 onClick={handleDelete}

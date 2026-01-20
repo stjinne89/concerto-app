@@ -5,7 +5,6 @@ import RsvpControl from '@/components/RsvpControl'
 import EventChat from '@/components/EventChat' 
 import { signOut } from '@/app/actions'
 import ToggleMap from '@/components/ToggleMap'
-import Image from 'next/image'
 
 // Datum formatter
 function formatDateTimeParts(dateString: string) {
@@ -28,21 +27,24 @@ function formatDateTimeParts(dateString: string) {
   return { day, time }
 }
 
-// Params type definitie voor Next.js 15
 export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const supabase = await createClient()
   
-  // 1. Haal de URL parameters op (Aankomend vs Geschiedenis)
   const params = await searchParams
   const isHistory = params.view === 'history'
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Huidige tijd in ISO formaat voor de filter
+  // Haal ook het profiel op voor de avatar in de navigatie
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('avatar_url, full_name')
+    .eq('id', user.id)
+    .single()
+
   const now = new Date().toISOString()
 
-  // 2. Bouw de query
   let query = supabase
     .from('events')
     .select(`
@@ -50,18 +52,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       rsvps (
         status,
         user_id,
+        last_read_at, 
         profiles (
           full_name
         )
       )
     `)
 
-  // 3. Pas filters toe op basis van de view
   if (isHistory) {
-    // Geschiedenis: Alles in het verleden, nieuwste bovenaan
     query = query.lt('start_at', now).order('start_at', { ascending: false })
   } else {
-    // Agenda: Alles in de toekomst, eerstvolgende bovenaan
     query = query.gte('start_at', now).order('start_at', { ascending: true })
   }
 
@@ -80,20 +80,31 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   return (
     <main className="min-h-screen bg-slate-950 text-slate-200 pb-24">
       
-      <nav className="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/5 px-4 py-4 flex justify-between items-center">
+      {/* NAVIGATIE BALK */}
+      <nav className="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/5 px-4 py-3 flex justify-between items-center">
         <h1 className="font-black text-2xl tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-indigo-400 to-cyan-400">
           Concerto
         </h1>
-        <form action={signOut}>
-          <button className="text-xs font-bold uppercase tracking-wider text-slate-400 bg-white/5 px-4 py-2 rounded-full border border-white/5 hover:bg-white/10 hover:text-white transition-colors">
-            Uitloggen
-          </button>
-        </form>
+        
+        {/* PROFIEL KNOP (Vervangt de oude Uitlog knop) */}
+        <Link href="/profile" className="flex items-center gap-3 pl-4 py-1 pr-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all group">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-white transition-colors hidden sm:block">
+                {profile?.full_name?.split(' ')[0] || 'Profiel'}
+            </span>
+            <div className="w-8 h-8 rounded-full bg-slate-800 overflow-hidden border border-white/10 group-hover:border-violet-500/50 transition-colors">
+                {profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-500">
+                        {profile?.full_name?.charAt(0) || user.email?.charAt(0)}
+                    </div>
+                )}
+            </div>
+        </Link>
       </nav>
 
       <div className="max-w-lg mx-auto p-4 pt-24">
         
-        {/* Kaart alleen tonen bij 'Aankomend' en als er events zijn */}
         {!isHistory && events && events.length > 0 && <ToggleMap events={events} />}
 
         <div className="flex justify-between items-end mb-6 mt-6">
@@ -106,7 +117,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           </Link>
         </div>
 
-        {/* 4. De Toggle Knoppen (Tabs) */}
         <div className="flex p-1 bg-white/5 rounded-xl mb-8 border border-white/5">
           <Link 
             href="/" 
@@ -127,6 +137,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
             events.map((event) => {
               const { day, time } = formatDateTimeParts(event.start_at)
               const isCreator = user.id === event.created_by;
+
+              const myRsvp = event.rsvps?.find(r => r.user_id === user.id);
+              
+              const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
+              const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
+              const hasUnread = lastMessage ? lastMessage > lastRead : false;
+
+              const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(event.venue_name)}`;
 
               return (
                 <div key={event.id} className={`relative border border-white/5 rounded-[2rem] p-6 group overflow-hidden transition-all ${isHistory ? 'bg-slate-900/30 opacity-75 hover:opacity-100' : 'bg-slate-900/50 backdrop-blur-sm hover:border-violet-500/20'}`}>
@@ -155,26 +173,39 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                     <div className="flex-1 min-w-0 pr-8">
                       <h3 className={`text-xl font-bold truncate text-serif leading-tight ${isHistory ? 'text-slate-400' : 'text-white'}`}>{event.title}</h3>
                       <div className="text-sm text-slate-400 mt-2 flex flex-col gap-1.5">
+                        
                         <div className="flex items-center gap-2">
                           <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           <span>{time}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                           <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                          <span className="truncate">{event.venue_name}</span>
-                        </div>
+
+                        <a 
+                          href={mapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 group/location hover:text-violet-400 transition-colors cursor-pointer"
+                          title="Open in Google Maps"
+                        >
+                           <svg className="w-3.5 h-3.5 opacity-50 group-hover/location:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                           <span className="truncate underline decoration-dotted decoration-white/20 underline-offset-4 group-hover/location:decoration-violet-400">{event.venue_name}</span>
+                        </a>
+
                       </div>
                     </div>
                   </div>
 
-                  {/* Bij geschiedenis tonen we de controls wat subtieler of niet? Ik laat ze staan. */}
                   <div className="pt-4 border-t border-white/5">
                     <RsvpControl 
                       eventId={event.id} 
                       myStatus={getMyStatus(event.id)} 
                       allRsvps={event.rsvps || []}
                     />
-                    <EventChat eventId={event.id} currentUserId={user.id} />
+                    
+                    <EventChat 
+                        eventId={event.id} 
+                        currentUserId={user.id} 
+                        hasUnread={hasUnread} 
+                    />
                   </div>
                 </div>
               )
@@ -185,7 +216,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                 {isHistory ? 'Geen geschiedenis' : 'Geen aankomende plannen'}
               </h3>
               {!isHistory && (
-                <Link href="/events/new" className="text-violet-400 font-bold hover:text-violet-300 transition-colors">Start met toevoegen &rarr;</Link>
+                <Link href="/events/new" className="text-violet-400 font-bold hover:text-violet-300 transition-colors">Start met toevoegen →</Link>
               )}
             </div>
           )}
