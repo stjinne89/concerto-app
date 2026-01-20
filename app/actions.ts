@@ -38,31 +38,31 @@ export async function createEvent(formData: FormData) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) redirect('/login')
 
-  // Check groepslidmaatschap (zoals in je originele code)
   const { data: members, error: memberError } = await supabase
     .from('group_members')
     .select('group_id')
     .eq('user_id', user.id)
   
   if (memberError || !members || members.length === 0) {
+    // Voorkom crash als user geen member is, maar log error
+    console.error('User is geen member van een groep')
     throw new Error('Je bent geen lid van een groep!')
   }
 
   const firstGroupId = members[0].group_id
   
-  // Data voorbereiden
   const venue = formData.get('venue') as string
   const coords = await getCoordinates(venue)
   
   const rawDate = formData.get('start_at') as string
-  const fixedDate = fixTimezoneOffset(rawDate) // Tijdzone fix toepassen!
+  const fixedDate = fixTimezoneOffset(rawDate) 
 
   const eventData = {
     group_id: firstGroupId,
     created_by: user.id,
     title: formData.get('title') as string,
     event_type: formData.get('type') as string,
-    start_at: fixedDate, // De gecorrigeerde datum
+    start_at: fixedDate, 
     venue_name: venue,
     description: formData.get('description') as string,
     ticket_link: formData.get('ticket_link') as string,
@@ -101,7 +101,7 @@ export async function toggleRSVP(eventId: string, status: string) {
   revalidatePath('/')
 }
 
-// --- 3. CHAT BERICHT STUREN (DEZE MISTE JE!) ---
+// --- 3. CHAT BERICHT STUREN ---
 export async function sendMessage(eventId: string, content: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -129,15 +129,13 @@ export async function signOut() {
 // --- 5. LINK PREVIEW (SCRAPER) ---
 export async function scrapeEventUrl(url: string) {
   const cleanUrl = url.split('?')[0];
-  console.log(`--- Start Scraping: ${cleanUrl} ---`); 
-
+  
   try {
     const response = await fetch(cleanUrl, { 
       cache: 'no-store',
       headers: { 
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Referer': 'https://www.google.com/'
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       } 
     });
     
@@ -152,7 +150,6 @@ export async function scrapeEventUrl(url: string) {
     let image = $('meta[property="og:image"]').attr('content') || '';
     let startDate = '';
 
-    // Eenvoudige datum checker
     if (!startDate) {
         const rawText = description + " " + $('body').text();
         const dutchMonths = 'januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december';
@@ -203,12 +200,12 @@ export async function updateEvent(formData: FormData) {
   const coords = await getCoordinates(venue)
   
   const rawDate = formData.get('start_at') as string
-  const fixedDate = fixTimezoneOffset(rawDate) // Tijdzone fix!
+  const fixedDate = fixTimezoneOffset(rawDate) 
 
   const updateData = {
     title: formData.get('title') as string,
     event_type: formData.get('type') as string,
-    start_at: fixedDate, // Gecorrigeerde tijd opslaan
+    start_at: fixedDate, 
     venue_name: venue,
     description: formData.get('description') as string,
     ticket_link: formData.get('ticket_link') as string,
@@ -225,6 +222,35 @@ export async function updateEvent(formData: FormData) {
     .eq('created_by', user.id)
 
   if (error) console.error('Update Error:', error)
+  revalidatePath('/')
+  redirect('/')
+}
+
+// --- 7. EVENT VERWIJDEREN (Verbeterd) ---
+export async function deleteEvent(eventId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) redirect('/login')
+
+  // We voegen { count: 'exact' } toe om te tellen hoeveel we verwijderen
+  const { error, count } = await supabase
+    .from('events')
+    .delete({ count: 'exact' }) 
+    .eq('id', eventId)
+    .eq('created_by', user.id) 
+
+  if (error) {
+    console.error('Delete Error:', error)
+    throw new Error('Database fout bij verwijderen')
+  }
+
+  // Als count 0 is, betekent het dat de regel niet verwijderd mocht worden (door RLS) of niet bestond
+  if (count === 0) {
+    console.error('Geen event verwijderd. Mogelijk geen rechten.')
+    throw new Error('Kon event niet verwijderen: Je bent waarschijnlijk niet de eigenaar.')
+  }
+
   revalidatePath('/')
   redirect('/')
 }

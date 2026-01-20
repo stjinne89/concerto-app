@@ -1,17 +1,18 @@
 'use client'
 
-import { updateEvent, getEvent, scrapeEventUrl } from '@/app/actions'
+// Vergeet 'deleteEvent' niet in de import hieronder!
+import { updateEvent, getEvent, scrapeEventUrl, deleteEvent } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
-  // Params uitpakken (Next.js 15 style)
   const { id } = use(params)
   
   const [loading, setLoading] = useState(false)
   const [scrapeUrl, setScrapeUrl] = useState('')
   const [isFetching, setIsFetching] = useState(true)
+  const [isDeleting, setIsDeleting] = useState(false) // Nieuwe state voor verwijderen
   
   const [formData, setFormData] = useState({
     title: '',
@@ -24,12 +25,10 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     resale_link: ''
   })
 
-  // 1. DATA OPHALEN
   useEffect(() => {
     const loadData = async () => {
       const { data, error } = await getEvent(id)
       if (data) {
-        // Datum formatteren voor de input (yyyy-MM-ddThh:mm)
         const dateStr = data.start_at ? new Date(data.start_at).toISOString().slice(0, 16) : ''
         
         setFormData({
@@ -48,7 +47,6 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     loadData()
   }, [id])
 
-  // 2. SCRAPER LOGICA
   const handleAutoFill = async () => {
     if (!scrapeUrl) return
     setLoading(true)
@@ -66,6 +64,14 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     setLoading(false)
   }
 
+  // NIEUW: De functie die het verwijderen regelt
+  const handleDelete = async () => {
+    if (confirm('Weet je zeker dat je dit event wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
+      setIsDeleting(true)
+      await deleteEvent(id)
+    }
+  }
+
   if (isFetching) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
@@ -78,7 +84,6 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     <main className="min-h-screen bg-slate-950 text-slate-200 p-6 pb-24 selection:bg-violet-500/30">
       <div className="max-w-lg mx-auto">
         
-        {/* Header */}
         <header className="flex items-center justify-between mb-8">
           <Link href="/" className="text-slate-500 hover:text-white transition-colors flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
             <ArrowLeft size={14} /> Terug
@@ -87,11 +92,10 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
           <div className="w-12"></div>
         </header>
         
-        {/* Scraper Balk - Nu in Dark Style */}
+        {/* Scraper Balk */}
         <div className="bg-violet-500/10 border border-violet-500/20 p-5 rounded-[1.5rem] mb-8">
           <label className="block text-[10px] font-black text-violet-300 uppercase mb-3 flex items-center gap-2 tracking-widest">
-            <Sparkles size={12} /> 
-            Overschrijven met AI
+            <Sparkles size={12} /> Overschrijven met AI
           </label>
           <div className="flex gap-2">
             <input 
@@ -113,31 +117,23 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
         </div>
 
         <form action={updateEvent} className="space-y-6">
-          
           <input type="hidden" name="event_id" value={id} />
 
-          {/* Formulier Card */}
           <div className="bg-slate-900/50 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
-
-            {/* TITEL & TYPE */}
+            
+            {/* ... ALLE VELDEN (Titel, Datum, Type etc) BLIJVEN HETZELFDE ... */}
+            {/* Om ruimte te besparen heb ik de inputs hier even ingeklapt, 
+                maar je kunt de inputs uit je vorige bestand hier gewoon laten staan 
+                of kopieer ze uit het vorige antwoord als je ze kwijt bent. */}
+            
             <div className="space-y-6">
                 <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Titel</label>
-                    <input 
-                        name="title" required type="text" 
-                        value={formData.title} 
-                        onChange={e => setFormData({...formData, title: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
-                    />
+                    <input name="title" required type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all" />
                 </div>
                 <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Type</label>
-                    <select 
-                        name="type" 
-                        value={formData.type} 
-                        onChange={e => setFormData({...formData, type: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer"
-                    >
+                    <select name="type" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer">
                         <option value="concert" className="bg-slate-900">Concert</option>
                         <option value="festival" className="bg-slate-900">Festival</option>
                         <option value="listening_session" className="bg-slate-900">Luistersessie</option>
@@ -147,91 +143,61 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                 </div>
             </div>
 
-            {/* DATUM & VENUE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Datum</label>
-                    <input 
-                        name="start_at" required type="datetime-local" 
-                        value={formData.start_at} 
-                        onChange={e => setFormData({...formData, start_at: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all [color-scheme:dark]"
-                    />
+                    <input name="start_at" required type="datetime-local" value={formData.start_at} onChange={e => setFormData({...formData, start_at: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all [color-scheme:dark]" />
                 </div>
                 <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Locatie</label>
-                    <input 
-                        name="venue" required type="text" 
-                        value={formData.venue} 
-                        onChange={e => setFormData({...formData, venue: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
-                    />
+                    <input name="venue" required type="text" value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all" />
                 </div>
             </div>
 
-            {/* OMSCHRIJVING */}
             <div>
                 <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Info</label>
-                <textarea 
-                    name="description" rows={3} 
-                    value={formData.description} 
-                    onChange={e => setFormData({...formData, description: e.target.value})} 
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all resize-none"
-                />
+                <textarea name="description" rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all resize-none" />
             </div>
 
-            {/* TICKET LINKS - Dark Mode style */}
             <div className="pt-6 border-t border-white/5 space-y-4">
                 <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Ticket Links</h3>
-                
                 <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <Ticket size={16} className="text-slate-500 group-focus-within:text-violet-400 transition-colors" />
-                    </div>
-                    <input 
-                        name="ticket_link" type="url" placeholder="Officiele Verkoop Link" 
-                        value={formData.ticket_link} 
-                        onChange={e => setFormData({...formData, ticket_link: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
-                    />
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Ticket size={16} className="text-slate-500 group-focus-within:text-violet-400 transition-colors" /></div>
+                    <input name="ticket_link" type="url" placeholder="Officiele Verkoop Link" value={formData.ticket_link} onChange={e => setFormData({...formData, ticket_link: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all" />
                 </div>
-
                 <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <Repeat size={16} className="text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
-                    </div>
-                    <input 
-                        name="ticketswap_link" type="url" placeholder="TicketSwap Link" 
-                        value={formData.ticketswap_link} 
-                        onChange={e => setFormData({...formData, ticketswap_link: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
-                    />
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Repeat size={16} className="text-slate-500 group-focus-within:text-cyan-400 transition-colors" /></div>
+                    <input name="ticketswap_link" type="url" placeholder="TicketSwap Link" value={formData.ticketswap_link} onChange={e => setFormData({...formData, ticketswap_link: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all" />
                 </div>
-
                 <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" />
-                    </div>
-                    <input 
-                        name="resale_link" type="url" placeholder="Extra Resale" 
-                        value={formData.resale_link} 
-                        onChange={e => setFormData({...formData, resale_link: e.target.value})} 
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
-                    />
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" /></div>
+                    <input name="resale_link" type="url" placeholder="Extra Resale" value={formData.resale_link} onChange={e => setFormData({...formData, resale_link: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all" />
                 </div>
             </div>
 
           </div>
 
           {/* Actie Knoppen */}
-          <div className="pt-4 flex flex-col gap-4">
+          <div className="pt-4 space-y-4">
             <button 
                 type="submit" 
                 className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] transition-all shadow-lg shadow-violet-900/20 active:scale-[0.98]"
             >
                 Wijzigingen Opslaan
             </button>
-            <Link href="/" className="text-center text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors py-2">
+            
+            {/* NIEUWE VERWIJDER KNOP */}
+            <button 
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="w-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest text-red-500/60 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 py-4 rounded-[2rem] transition-all"
+            >
+                {isDeleting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                Event Verwijderen
+            </button>
+
+            <Link href="/" className="block text-center text-xs font-bold uppercase tracking-widest text-slate-600 hover:text-white transition-colors py-2">
                 Annuleren
             </Link>
           </div>
