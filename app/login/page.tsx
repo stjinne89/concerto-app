@@ -29,7 +29,7 @@ function LoginForm() {
           Concerto
         </h1>
         <p className="text-slate-400 text-sm">
-          {isLoginMode ? 'Log in om je agenda te beheren' : 'Maak een account aan en doe mee'}
+          {isLoginMode ? 'Welkom bij de leukste concert en festival agenda van de Benelux' : 'Maak een account aan en doe mee'}
         </p>
       </div>
 

@@ -6,7 +6,6 @@ import EventChat from '@/components/EventChat'
 import { signOut } from '@/app/actions'
 import ToggleMap from '@/components/ToggleMap'
 
-// Type definitie
 type Rsvp = {
   user_id: string
   status: string
@@ -49,6 +48,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     .single()
 
   const now = new Date().toISOString()
+  // Grens voor 'Nieuw': 3 dagen (72 uur) geleden
+  const threeDaysAgo = new Date(Date.now() - (72 * 60 * 60 * 1000));
 
   let query = supabase
     .from('events')
@@ -73,12 +74,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: rawEvents } = await query
   let events = rawEvents || []
 
-  // --- AANGEPAST: Filter voor "Mijn Agenda" ---
   if (view === 'mine') {
       events = events.filter(event => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id)
-          // LOGICA: Toon als er een RSVP is, EN die is niet 'not_going'.
-          // Dus: 'going', 'maybe', 'interested' - alles mag door.
           return myRsvp?.status && myRsvp.status !== 'not_going'
       })
   }
@@ -93,15 +91,24 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     return rsvp?.status
   }
 
-  // Notificatie teller
+  // --- NOTIFICATIE LOGICA ---
   let totalUnreadCount = 0;
+  
   if (rawEvents) {
       totalUnreadCount = rawEvents.reduce((acc, event) => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
+          
+          // 1. Check op ongelezen berichten
           const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
           const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
-          
-          if (lastMessage && lastMessage > lastRead) {
+          const hasUnreadChat = lastMessage ? lastMessage > lastRead : false;
+
+          // 2. Check of het event ZELF nieuw is (aangemaakt < 3 dagen geleden EN geen RSVP)
+          const createdAt = new Date(event.created_at); // created_at zit standaard in select('*')
+          const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
+
+          // Als één van beide waar is, tel er 1 bij op
+          if (hasUnreadChat || isNewEvent) {
               return acc + 1;
           }
           return acc;
@@ -111,7 +118,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   return (
     <main className="min-h-screen bg-slate-950 text-slate-200 pb-24">
       
-      {/* NAVIGATIE BALK */}
       <nav className="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/5 px-4 py-3 flex justify-between items-center">
         <h1 className="font-black text-2xl tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-indigo-400 to-cyan-400">
           Concerto
@@ -185,6 +191,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
               const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
               const hasUnread = lastMessage ? lastMessage > lastRead : false;
+              
+              // NIEUW: Check of het event zelf 'nieuw' is voor weergave in de kaart
+              const createdAt = new Date(event.created_at);
+              const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
               const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(event.venue_name)}`;
 
@@ -201,9 +211,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                   )}
 
                   <div className="flex justify-between items-start mb-3">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : 'text-violet-300 bg-violet-500/10 border-violet-500/20'}`}>
-                      {event.event_type}
-                    </span>
+                    <div className="flex gap-2">
+                        {/* Event Type Label */}
+                        <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : 'text-violet-300 bg-violet-500/10 border-violet-500/20'}`}>
+                          {event.event_type}
+                        </span>
+
+                        {/* NIEUW: Het "NIEUW" Labeltje */}
+                        {isNewEvent && (
+                            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
+                                Nieuw
+                            </span>
+                        )}
+                    </div>
                   </div>
 
                   <div className="flex gap-5 items-start mb-6">
