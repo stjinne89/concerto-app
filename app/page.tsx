@@ -6,6 +6,13 @@ import EventChat from '@/components/EventChat'
 import { signOut } from '@/app/actions'
 import ToggleMap from '@/components/ToggleMap'
 
+// Type definitie om TypeScript tevreden te stellen
+type Rsvp = {
+  user_id: string
+  status: string
+  last_read_at: string | null
+}
+
 // Datum formatter
 function formatDateTimeParts(dateString: string) {
   const date = new Date(dateString)
@@ -86,7 +93,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           Concerto
         </h1>
         
-        {/* PROFIEL KNOP (Vervangt de oude Uitlog knop) */}
+        {/* PROFIEL KNOP */}
         <Link href="/profile" className="flex items-center gap-3 pl-4 py-1 pr-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all group">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-white transition-colors hidden sm:block">
                 {profile?.full_name?.split(' ')[0] || 'Profiel'}
@@ -138,7 +145,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const { day, time } = formatDateTimeParts(event.start_at)
               const isCreator = user.id === event.created_by;
 
-              const myRsvp = event.rsvps?.find(r => r.user_id === user.id);
+              // --- HIER ZAT DE FOUT: Nu met type (r: Rsvp) ---
+              const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
               
               const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
               const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
