@@ -6,14 +6,13 @@ import EventChat from '@/components/EventChat'
 import { signOut } from '@/app/actions'
 import ToggleMap from '@/components/ToggleMap'
 
-// Type definitie om TypeScript tevreden te stellen
+// Type definitie
 type Rsvp = {
   user_id: string
   status: string
   last_read_at: string | null
 }
 
-// Datum formatter
 function formatDateTimeParts(dateString: string) {
   const date = new Date(dateString)
   const timeZone = 'Europe/Amsterdam'
@@ -21,11 +20,11 @@ function formatDateTimeParts(dateString: string) {
   const day = new Intl.DateTimeFormat('nl-NL', { 
     weekday: 'short', 
     day: 'numeric',
+    month: 'short', 
     timeZone 
   }).format(date)
 
   const time = new Intl.DateTimeFormat('nl-NL', { 
-    month: 'short', 
     hour: '2-digit', 
     minute: '2-digit',
     timeZone 
@@ -38,12 +37,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const supabase = await createClient()
   
   const params = await searchParams
-  const isHistory = params.view === 'history'
+  const view = params.view || 'upcoming'
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Haal ook het profiel op voor de avatar in de navigatie
   const { data: profile } = await supabase
     .from('profiles')
     .select('avatar_url, full_name')
@@ -66,13 +64,24 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       )
     `)
 
-  if (isHistory) {
+  if (view === 'history') {
     query = query.lt('start_at', now).order('start_at', { ascending: false })
   } else {
     query = query.gte('start_at', now).order('start_at', { ascending: true })
   }
 
-  const { data: events } = await query
+  const { data: rawEvents } = await query
+  let events = rawEvents || []
+
+  // --- AANGEPAST: Filter voor "Mijn Agenda" ---
+  if (view === 'mine') {
+      events = events.filter(event => {
+          const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id)
+          // LOGICA: Toon als er een RSVP is, EN die is niet 'not_going'.
+          // Dus: 'going', 'maybe', 'interested' - alles mag door.
+          return myRsvp?.status && myRsvp.status !== 'not_going'
+      })
+  }
 
   const { data: myRsvps } = await supabase
     .from('rsvps')
@@ -84,6 +93,21 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     return rsvp?.status
   }
 
+  // Notificatie teller
+  let totalUnreadCount = 0;
+  if (rawEvents) {
+      totalUnreadCount = rawEvents.reduce((acc, event) => {
+          const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
+          const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
+          const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
+          
+          if (lastMessage && lastMessage > lastRead) {
+              return acc + 1;
+          }
+          return acc;
+      }, 0);
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-200 pb-24">
       
@@ -93,8 +117,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           Concerto
         </h1>
         
-        {/* PROFIEL KNOP */}
-        <Link href="/profile" className="flex items-center gap-3 pl-4 py-1 pr-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all group">
+        <Link href="/profile" className="relative flex items-center gap-3 pl-4 py-1 pr-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all group">
+            {totalUnreadCount > 0 && (
+                <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-lg z-10 animate-pulse">
+                    {totalUnreadCount}
+                </div>
+            )}
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-white transition-colors hidden sm:block">
                 {profile?.full_name?.split(' ')[0] || 'Profiel'}
             </span>
@@ -112,30 +140,38 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
 
       <div className="max-w-lg mx-auto p-4 pt-24">
         
-        {!isHistory && events && events.length > 0 && <ToggleMap events={events} />}
+        {view !== 'history' && events && events.length > 0 && <ToggleMap events={events} />}
 
         <div className="flex justify-between items-end mb-6 mt-6">
           <div>
             <h2 className="text-3xl font-bold text-white tracking-tight text-serif">Agenda</h2>
-            <p className="text-slate-500 text-sm mt-1">Wie is waar?</p>
+            <p className="text-slate-500 text-sm mt-1">
+                {view === 'mine' ? 'Mijn plannen' : view === 'history' ? 'Het archief' : 'Alles wat er aan komt'}
+            </p>
           </div>
           <Link href="/events/new" className="bg-violet-600 px-6 py-2.5 font-bold text-white rounded-full shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:bg-violet-500 hover:scale-105 transition-all">
             + Nieuw
           </Link>
         </div>
 
-        <div className="flex p-1 bg-white/5 rounded-xl mb-8 border border-white/5">
+        <div className="flex p-1 bg-white/5 rounded-xl mb-8 border border-white/5 overflow-x-auto">
           <Link 
             href="/" 
-            className={`flex-1 text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${!isHistory ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 min-w-[80px] text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${view === 'upcoming' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            Aankomend
+            Alles
+          </Link>
+          <Link 
+            href="/?view=mine" 
+            className={`flex-1 min-w-[80px] text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${view === 'mine' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            Mijn Agenda
           </Link>
           <Link 
             href="/?view=history" 
-            className={`flex-1 text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${isHistory ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 min-w-[80px] text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${view === 'history' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            Geschiedenis
+            Archief
           </Link>
         </div>
 
@@ -144,8 +180,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
             events.map((event) => {
               const { day, time } = formatDateTimeParts(event.start_at)
               const isCreator = user.id === event.created_by;
-
-              // --- HIER ZAT DE FOUT: Nu met type (r: Rsvp) ---
               const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
               
               const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
@@ -155,7 +189,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(event.venue_name)}`;
 
               return (
-                <div key={event.id} className={`relative border border-white/5 rounded-[2rem] p-6 group overflow-hidden transition-all ${isHistory ? 'bg-slate-900/30 opacity-75 hover:opacity-100' : 'bg-slate-900/50 backdrop-blur-sm hover:border-violet-500/20'}`}>
+                <div key={event.id} className={`relative border border-white/5 rounded-[2rem] p-6 group overflow-hidden transition-all ${view === 'history' ? 'bg-slate-900/30 opacity-75 hover:opacity-100' : 'bg-slate-900/50 backdrop-blur-sm hover:border-violet-500/20'}`}>
                   
                   {isCreator && (
                      <Link 
@@ -167,26 +201,29 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                   )}
 
                   <div className="flex justify-between items-start mb-3">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${isHistory ? 'text-slate-500 border-slate-700 bg-slate-800' : 'text-violet-300 bg-violet-500/10 border-violet-500/20'}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : 'text-violet-300 bg-violet-500/10 border-violet-500/20'}`}>
                       {event.event_type}
                     </span>
                   </div>
 
                   <div className="flex gap-5 items-start mb-6">
-                    <div className={`border rounded-2xl p-3 min-w-[64px] text-center flex flex-col justify-center h-full ${isHistory ? 'bg-white/5 border-white/5 text-slate-500' : 'bg-white/5 border-white/5'}`}>
+                    <div className={`border rounded-2xl p-3 min-w-[70px] text-center flex flex-col justify-center h-full ${view === 'history' ? 'bg-white/5 border-white/5 text-slate-500' : 'bg-white/5 border-white/5'}`}>
                       <span className="text-xl font-black text-white block leading-none">{day.split(' ')[1]}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase mt-1 block">{day.split(' ')[0]}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase mt-1 block leading-tight">
+                        {day.split(' ')[0]}<br/>
+                        {day.split(' ')[2]}
+                      </span>
                     </div>
                     
                     <div className="flex-1 min-w-0 pr-8">
-                      <h3 className={`text-xl font-bold truncate text-serif leading-tight ${isHistory ? 'text-slate-400' : 'text-white'}`}>{event.title}</h3>
+                      <h3 className={`text-xl font-bold break-words text-serif leading-tight ${view === 'history' ? 'text-slate-400' : 'text-white'}`}>
+                        {event.title}
+                      </h3>
                       <div className="text-sm text-slate-400 mt-2 flex flex-col gap-1.5">
-                        
                         <div className="flex items-center gap-2">
                           <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           <span>{time}</span>
                         </div>
-
                         <a 
                           href={mapsUrl}
                           target="_blank"
@@ -197,7 +234,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                            <svg className="w-3.5 h-3.5 opacity-50 group-hover/location:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                            <span className="truncate underline decoration-dotted decoration-white/20 underline-offset-4 group-hover/location:decoration-violet-400">{event.venue_name}</span>
                         </a>
-
                       </div>
                     </div>
                   </div>
@@ -221,9 +257,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           ) : (
             <div className="text-center py-20 px-6 bg-slate-900/30 rounded-3xl border border-dashed border-slate-800">
               <h3 className="text-xl font-bold text-white mb-2">
-                {isHistory ? 'Geen geschiedenis' : 'Geen aankomende plannen'}
+                {view === 'mine' ? 'Nog geen plannen' : 'Geen events gevonden'}
               </h3>
-              {!isHistory && (
+              <p className="text-slate-500 mb-4 text-sm">
+                  {view === 'mine' ? 'Zet jezelf op "Gaat" of "Misschien" bij een event om hem hier te zien.' : ''}
+              </p>
+              {view !== 'history' && (
                 <Link href="/events/new" className="text-violet-400 font-bold hover:text-violet-300 transition-colors">Start met toevoegen →</Link>
               )}
             </div>
