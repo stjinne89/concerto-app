@@ -78,7 +78,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   if (view === 'mine') {
       events = events.filter(event => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id)
-          return myRsvp?.status && myRsvp.status !== 'not_going'
+          // AANGEPAST: Check of status NIET 'cant' is
+          return myRsvp?.status && myRsvp.status !== 'cant' 
       })
   }
 
