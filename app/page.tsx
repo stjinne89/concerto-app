@@ -59,10 +59,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         user_id,
         last_read_at, 
         profiles (
-          full_name
+          full_name,
+          avatar_url 
         )
       )
     `)
+    // 👆 HIERBOVEN: avatar_url toegevoegd!
 
   if (view === 'history') {
     query = query.lt('start_at', now).order('start_at', { ascending: false })
@@ -228,7 +230,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                     </div>
                     
                     <div className="flex-1 min-w-0 pr-8">
-                      {/* TITEL: Nu klikbaar als er een ticket_link is */}
+                      {/* TITEL */}
                       <h3 className={`text-xl font-bold break-words text-serif leading-tight ${view === 'history' ? 'text-slate-400' : 'text-white'}`}>
                         {event.ticket_link ? (
                             <a 
@@ -261,7 +263,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                            <span className="truncate underline decoration-dotted decoration-white/20 underline-offset-4 group-hover/location:decoration-violet-400">{event.venue_name}</span>
                         </a>
 
-                        {/* NIEUW: Ticket & Swap Knoppen */}
+                        {/* Ticket & Swap Knoppen */}
                         <div className="flex flex-wrap gap-2 mt-2">
                             {event.ticket_link && (
                                 <a href={event.ticket_link} target="_blank" rel="noopener noreferrer" 
