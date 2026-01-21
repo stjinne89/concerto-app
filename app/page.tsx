@@ -48,7 +48,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     .single()
 
   const now = new Date().toISOString()
-  // Grens voor 'Nieuw': 3 dagen (72 uur) geleden
   const threeDaysAgo = new Date(Date.now() - (72 * 60 * 60 * 1000));
 
   let query = supabase
@@ -91,23 +90,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     return rsvp?.status
   }
 
-  // --- NOTIFICATIE LOGICA ---
   let totalUnreadCount = 0;
   
   if (rawEvents) {
       totalUnreadCount = rawEvents.reduce((acc, event) => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
           
-          // 1. Check op ongelezen berichten
           const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
           const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
           const hasUnreadChat = lastMessage ? lastMessage > lastRead : false;
 
-          // 2. Check of het event ZELF nieuw is (aangemaakt < 3 dagen geleden EN geen RSVP)
-          const createdAt = new Date(event.created_at); // created_at zit standaard in select('*')
+          const createdAt = new Date(event.created_at);
           const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
-          // Als één van beide waar is, tel er 1 bij op
           if (hasUnreadChat || isNewEvent) {
               return acc + 1;
           }
@@ -192,7 +187,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
               const hasUnread = lastMessage ? lastMessage > lastRead : false;
               
-              // NIEUW: Check of het event zelf 'nieuw' is voor weergave in de kaart
               const createdAt = new Date(event.created_at);
               const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
@@ -212,12 +206,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
 
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex gap-2">
-                        {/* Event Type Label */}
                         <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : 'text-violet-300 bg-violet-500/10 border-violet-500/20'}`}>
                           {event.event_type}
                         </span>
 
-                        {/* NIEUW: Het "NIEUW" Labeltje */}
                         {isNewEvent && (
                             <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
                                 Nieuw
@@ -236,9 +228,23 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                     </div>
                     
                     <div className="flex-1 min-w-0 pr-8">
+                      {/* TITEL: Nu klikbaar als er een ticket_link is */}
                       <h3 className={`text-xl font-bold break-words text-serif leading-tight ${view === 'history' ? 'text-slate-400' : 'text-white'}`}>
-                        {event.title}
+                        {event.ticket_link ? (
+                            <a 
+                                href={event.ticket_link} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="hover:text-violet-400 transition-colors decoration-violet-500/50 underline-offset-4 hover:underline"
+                            >
+                                {event.title}
+                                <span className="inline-block ml-1 opacity-50 text-sm">↗</span>
+                            </a>
+                        ) : (
+                            event.title
+                        )}
                       </h3>
+
                       <div className="text-sm text-slate-400 mt-2 flex flex-col gap-1.5">
                         <div className="flex items-center gap-2">
                           <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -254,6 +260,29 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                            <svg className="w-3.5 h-3.5 opacity-50 group-hover/location:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                            <span className="truncate underline decoration-dotted decoration-white/20 underline-offset-4 group-hover/location:decoration-violet-400">{event.venue_name}</span>
                         </a>
+
+                        {/* NIEUW: Ticket & Swap Knoppen */}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {event.ticket_link && (
+                                <a href={event.ticket_link} target="_blank" rel="noopener noreferrer" 
+                                   className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors flex items-center gap-1">
+                                   🎫 Tickets
+                                </a>
+                            )}
+                            {event.ticketswap_link && (
+                                <a href={event.ticketswap_link} target="_blank" rel="noopener noreferrer" 
+                                   className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors flex items-center gap-1">
+                                   🔄 Swap
+                                </a>
+                            )}
+                            {event.resale_link && (
+                                <a href={event.resale_link} target="_blank" rel="noopener noreferrer" 
+                                   className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center gap-1">
+                                   ♻️ Resale
+                                </a>
+                            )}
+                        </div>
+
                       </div>
                     </div>
                   </div>
