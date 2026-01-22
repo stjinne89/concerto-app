@@ -1,166 +1,152 @@
 'use client'
 
 import { createClient } from '@/utils/supabase/client'
-// Zorg dat markChatAsRead in je actions.ts staat!
-import { sendMessage, markChatAsRead } from '@/app/actions'
-import { useEffect, useState, useRef } from 'react'
-import { Send, MessageCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { MessageCircle, Send, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+
+// ... (Types blijven hetzelfde, of we laten ze weg voor brevity als ze hierboven stonden, 
+// maar voor de volledigheid hier de volledige code met nieuwe styling)
 
 type Message = {
   id: string
-  content: string
-  user_id: string
+  message: string
   created_at: string
-  profiles: { full_name: string | null, email: string } | null
+  user_id: string
+  profiles: {
+    full_name: string
+    avatar_url: string
+  }
 }
 
-// 1. Hier voegen we 'hasUnread' toe aan de props
 export default function EventChat({ eventId, currentUserId, hasUnread }: { eventId: string, currentUserId: string, hasUnread: boolean }) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
   const [isOpen, setIsOpen] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [newMessage, setNewMessage] = useState('')
+  const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
-  // 2. Als de chat opent én er zijn ongelezen berichten -> Markeer als gelezen
   useEffect(() => {
-    if (isOpen && hasUnread) {
-        // We roepen de server action aan. 
-        // Door revalidatePath in de action zal de pagina verversen en 'hasUnread' false worden.
-        markChatAsRead(eventId).catch(console.error)
+    if (isOpen) {
+      fetchMessages()
+      const channel = supabase
+        .channel(`event_chat:${eventId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_chats', filter: `event_id=eq.${eventId}` }, 
+        (payload) => {
+            fetchMessageById(payload.new.id)
+        })
+        .subscribe()
+
+       // Update last_read_at als we openen
+       updateLastRead()
+
+       return () => { supabase.removeChannel(channel) }
     }
-  }, [isOpen, hasUnread, eventId])
+  }, [isOpen])
 
   useEffect(() => {
-    if (!isOpen) return
-    const fetchMessages = async () => {
-      const { data } = await supabase
-        .from('messages')
-        .select('*, profiles(full_name, email)')
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: true })
-      if (data) setMessages(data as any)
-    }
-    fetchMessages()
-    
-    const channel = supabase
-      .channel(`chat-${eventId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `event_id=eq.${eventId}` }, 
-      (payload) => {
-        // Alleen nieuwe berichten toevoegen als ze niet van jezelf zijn (optimistic update vangt eigen berichten al af)
-        if (payload.new.user_id !== currentUserId) {
-            const fetchNewMsg = async () => {
-                const { data } = await supabase.from('messages').select('*, profiles(full_name, email)').eq('id', payload.new.id).single()
-                if (data) setMessages((prev) => [...prev, data as any])
-            }
-            fetchNewMsg()
-        }
-      })
-      .subscribe()
-      
-    return () => { supabase.removeChannel(channel) }
-  }, [eventId, isOpen, supabase, currentUserId])
-
-  // Scroll naar beneden bij nieuw bericht
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      if (isOpen) {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      }
   }, [messages, isOpen])
 
-  const handleSend = async () => {
-    if (!input.trim()) return
-    const text = input
-    setInput('') 
-    
-    // Optimistic UI update
-    const optimisticMsg: Message = {
-        id: Math.random().toString(), content: text, user_id: currentUserId, created_at: new Date().toISOString(),
-        profiles: { full_name: 'Ik', email: 'ik' } 
-    }
-    setMessages((prev) => [...prev, optimisticMsg])
-    
-    await sendMessage(eventId, text)
+  const updateLastRead = async () => {
+      await supabase.from('rsvps').update({ last_read_at: new Date().toISOString() })
+        .eq('event_id', eventId).eq('user_id', currentUserId)
+      router.refresh()
   }
 
-  const getDisplayName = (profile: Message['profiles']) => {
-      if (!profile) return 'Onbekend'
-      if (profile.full_name) return profile.full_name
-      return profile.email.split('@')[0]
+  const fetchMessageById = async (id: string) => {
+    const { data } = await supabase.from('event_chats').select('*, profiles(full_name, avatar_url)').eq('id', id).single()
+    if (data) setMessages(prev => [...prev, data])
+  }
+
+  const fetchMessages = async () => {
+    const { data } = await supabase.from('event_chats').select('*, profiles(full_name, avatar_url)').eq('event_id', eventId).order('created_at', { ascending: true })
+    if (data) setMessages(data)
+    setLoading(false)
+  }
+
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newMessage.trim()) return
+
+    const msg = newMessage
+    setNewMessage('') // Optimistic clear
+
+    await supabase.from('event_chats').insert({
+      event_id: eventId,
+      user_id: currentUserId,
+      message: msg
+    })
+    
+    // Update timestamp van event voor notificaties
+    await supabase.from('events').update({ last_message_at: new Date().toISOString() }).eq('id', eventId)
   }
 
   return (
-    <div className="mt-4 border-t border-slate-100 pt-4">
-      {!isOpen && (
+    <div className="mt-4">
+      {!isOpen ? (
+        // AANGEPAST: Rustigere styling (Dark mode friendly)
         <button 
-          onClick={() => setIsOpen(true)}
-          className="relative flex items-center justify-center gap-2 text-sm text-slate-600 hover:text-violet-600 font-bold py-2 w-full bg-slate-50 rounded-xl transition-colors group"
+            onClick={() => setIsOpen(true)}
+            className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-bold bg-slate-800 text-slate-300 border border-white/10 hover:bg-white/5 hover:text-white hover:border-white/20 transition-all group relative"
         >
-          <div className="relative">
-            <MessageCircle size={18} />
+            <MessageCircle size={18} className={hasUnread ? "text-white" : "text-slate-500 group-hover:text-white"} />
+            <span>Praat mee</span>
             
-            {/* 3. HET RODE BOLLETJE (Alleen als hasUnread true is) */}
             {hasUnread && (
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-50 animate-pulse"></span>
+                <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                </span>
             )}
-          </div>
-          
-          Praat mee 
-          {messages.length > 0 && !hasUnread && (
-            <span className="text-xs bg-slate-200 text-slate-600 group-hover:bg-violet-100 group-hover:text-violet-700 px-1.5 py-0.5 rounded-full transition-colors">
-                {messages.length}
-            </span>
-          )}
         </button>
-      )}
+      ) : (
+        <div className="bg-slate-900 border border-white/10 rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex justify-between items-center p-3 border-b border-white/10 bg-white/5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Chat</span>
+                <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={16}/></button>
+            </div>
 
-      {isOpen && (
-        <div className="bg-slate-50 rounded-2xl p-3 mt-2 ring-1 ring-slate-100">
-           <div className="flex justify-between items-center mb-2 px-1">
-             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Community Chat</h4>
-             <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 text-xs font-medium py-1 px-2">Sluiten</button>
-           </div>
-          
-          <div ref={scrollRef} className="h-56 overflow-y-auto space-y-3 mb-3 pr-2 scrollbar-thin scrollbar-thumb-slate-200">
-            {messages.length === 0 && <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">Nog stilletjes hier... zeg hoi!</div>}
-            
-            {messages.map((msg) => {
-              const isMe = msg.user_id === currentUserId
-              const displayName = isMe ? 'Jij' : getDisplayName(msg.profiles)
-              
-              return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                  <span className="text-[10px] text-slate-400 mb-1 px-2 font-semibold">
-                    {displayName}
-                  </span>
-                  
-                  <div className={`px-4 py-2 rounded-2xl text-sm max-w-[85%] shadow-sm leading-relaxed ${
-                    isMe 
-                      ? 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white rounded-tr-none' 
-                      : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none font-medium'
-                  }`}>
-                    {msg.content}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+            {/* Messages */}
+            <div className="h-64 overflow-y-auto p-4 space-y-3 bg-slate-950/50">
+                {loading ? <div className="text-center text-xs text-slate-600 mt-10">Laden...</div> : 
+                 messages.length === 0 ? <div className="text-center text-xs text-slate-600 mt-10">Nog geen berichten.</div> :
+                 messages.map(msg => {
+                     const isMe = msg.user_id === currentUserId
+                     return (
+                         <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+                             <div className="w-6 h-6 rounded-full bg-slate-800 overflow-hidden flex-shrink-0 border border-white/10 mt-1">
+                                 {msg.profiles?.avatar_url ? <img src={msg.profiles.avatar_url} className="w-full h-full object-cover"/> : null}
+                             </div>
+                             <div className={`max-w-[80%] rounded-xl p-2.5 text-sm ${isMe ? 'bg-violet-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-white/5'}`}>
+                                 <div className="font-bold text-[9px] opacity-50 mb-0.5">{msg.profiles?.full_name?.split(' ')[0]}</div>
+                                 {msg.message}
+                             </div>
+                         </div>
+                     )
+                 })
+                }
+                <div ref={messagesEndRef} />
+            </div>
 
-          <div className="flex gap-2 bg-white p-1 rounded-full border border-slate-200 shadow-sm">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Typ een bericht..."
-              className="flex-1 text-sm bg-transparent rounded-full px-3 py-2 focus:outline-none text-slate-700 placeholder:text-slate-400"
-            />
-            <button 
-              onClick={handleSend}
-              disabled={!input.trim()}
-              className="bg-violet-600 text-white p-2 rounded-full hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:hover:bg-violet-600"
-            >
-              <Send size={16} fill="currentColor" />
-            </button>
-          </div>
+            {/* Input */}
+            <form onSubmit={sendMessage} className="p-2 flex gap-2 bg-white/5 border-t border-white/10">
+                <input 
+                    type="text" 
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Typ een bericht..."
+                    className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
+                />
+                <button type="submit" disabled={!newMessage.trim()} className="p-2 bg-violet-600 text-white rounded-lg hover:bg-violet-500 disabled:opacity-50 disabled:hover:bg-violet-600 transition-colors">
+                    <Send size={16} />
+                </button>
+            </form>
         </div>
       )}
     </div>
