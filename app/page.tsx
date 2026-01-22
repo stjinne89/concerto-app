@@ -5,7 +5,11 @@ import RsvpControl from '@/components/RsvpControl'
 import EventChat from '@/components/EventChat' 
 import ToggleMap from '@/components/ToggleMap'
 import ScrollToTop from '@/components/ScrollToTop'
+import GroupSwitcher from '@/components/GroupSwitcher'
+import { getEvent, getGroupName, getGroupMusic } from '@/app/actions'
+import GroupHero from '@/components/GroupHero' 
 
+// Types definitions
 type Rsvp = {
   user_id: string
   status: string
@@ -17,6 +21,7 @@ type Reaction = {
   created_at: string
   target_user_id: string
   actor_user_id: string
+  emoji: string
 }
 
 function formatDateTimeParts(dateString: string) {
@@ -49,11 +54,12 @@ function getEventTypeStyles(type: string) {
   return 'bg-violet-500/10 text-violet-300 border-violet-500/20'
 }
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string, group?: string }> }) {
   const supabase = await createClient()
   
   const params = await searchParams
   const view = params.view || 'upcoming'
+  const groupId = params.group
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -63,6 +69,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     .select('avatar_url, full_name, address')
     .eq('id', user.id)
     .single()
+
+  // 1. Groepen ophalen
+  const { data: myGroups } = await supabase
+    .from('groups')
+    .select('id, name, invite_code')
+    .order('created_at', { ascending: false })
+  
+  const groups = (myGroups || []) as any[]
+
+  // Group Hero Data
+  let currentGroup = null
+  let musicTracks: any[] = []
+
+  if (groupId) {
+      const { data } = await supabase
+        .from('groups')
+        .select('*')
+        .eq('id', groupId)
+        .single()
+      currentGroup = data
+      musicTracks = await getGroupMusic(groupId)
+  }
 
   const now = new Date().toISOString()
   const threeDaysAgo = new Date(Date.now() - (72 * 60 * 60 * 1000));
@@ -83,6 +111,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       rsvp_reactions (*)
     `)
 
+  // Filter Logica
+  if (view === 'mine') {
+    // Client-side filter later
+  } else if (groupId) {
+    query = query.eq('group_id', groupId)
+  } else {
+    query = query.is('group_id', null)
+  }
+
   if (view === 'history') {
     query = query.lt('start_at', now).order('start_at', { ascending: false })
   } else {
@@ -92,6 +129,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: rawEvents } = await query
   let events = rawEvents || []
 
+  // Filteren voor 'Mijn Agenda'
   if (view === 'mine') {
       events = events.filter(event => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id)
@@ -109,35 +147,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     return rsvp?.status
   }
 
-  // --- SLIMME NOTIFICATIE LOGICA ---
   let unreadChatCount = 0;
   let newEventCount = 0;
   
   if (rawEvents) {
       rawEvents.forEach((event) => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
-          
-          // Wanneer heb ik voor het laatst gekeken?
           const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
-          
-          // 1. Check ongelezen CHATberichten
           const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
-          const hasUnreadChat = lastMessage ? lastMessage > lastRead : false;
+          
+          let hasUnreadChat = lastMessage ? lastMessage > lastRead : false;
 
-          // 2. Check ongelezen EMOJI reacties (NIEUW)
-          // Is er een reactie op MIJ, van IEMAND ANDERS, die NIEUWER is dan mijn laatste bezoek?
-          const myReactions = event.rsvp_reactions?.filter((r: Reaction) => r.target_user_id === user.id) || [];
-          const hasNewReaction = myReactions.some((r: Reaction) => {
-             const reactionTime = new Date(r.created_at);
-             return reactionTime > lastRead && r.actor_user_id !== user.id;
-          });
+          if (!hasUnreadChat) {
+             const myReactions = event.rsvp_reactions?.filter((r: Reaction) => r.target_user_id === user.id) || [];
+             hasUnreadChat = myReactions.some((r: Reaction) => new Date(r.created_at) > lastRead && r.actor_user_id !== user.id);
+          }
 
-          // 3. Check NIEUW EVENT (alleen als ik nog geen status heb)
           const createdAt = new Date(event.created_at);
           const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
-          // Tellen maar: Rood (Social) vs Groen (Info)
-          if (hasUnreadChat || hasNewReaction) {
+          if (hasUnreadChat) {
               unreadChatCount++;
           } else if (isNewEvent) {
               newEventCount++;
@@ -146,7 +175,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   }
 
   const totalBadgeCount = unreadChatCount + newEventCount;
-  // Rood (Chat/Emoji) wint altijd van Groen (Nieuw Event)
   const badgeColor = unreadChatCount > 0 ? 'bg-red-500' : 'bg-emerald-500';
 
   return (
@@ -179,51 +207,61 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         </Link>
       </nav>
 
-      <div className="max-w-lg mx-auto p-4 pt-24">
+      {/* LET OP: Hier heb ik max-w-lg weggehaald en vervangen door max-w-7xl voor de grid layout */}
+      <div className="max-w-7xl mx-auto p-4 pt-24">
         
-        {view !== 'history' && events && events.length > 0 && <ToggleMap events={events} />}
+        {/* Beperk breedte voor switcher en hero zodat ze niet te breed worden op desktop */}
+        <div className="max-w-2xl mx-auto">
+            <GroupSwitcher groups={groups} />
+            {currentGroup && (
+                <GroupHero group={currentGroup} musicTracks={musicTracks} />
+            )}
+            {view !== 'history' && events && events.length > 0 && <ToggleMap events={events} />}
+        </div>
 
-        <div className="flex justify-between items-end mb-6 mt-6">
-          <div>
-            <h2 className="text-3xl font-bold text-white tracking-tight text-serif">Agenda</h2>
-            <p className="text-slate-500 text-sm mt-1">
-                {view === 'mine' ? 'Mijn plannen' : view === 'history' ? 'Het archief' : 'Alles wat er aan komt'}
-            </p>
-          </div>
-          <Link href="/events/new" className="bg-violet-600 px-6 py-2.5 font-bold text-white rounded-full shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:bg-violet-500 hover:scale-105 transition-all">
+        <div className="flex justify-between items-end mb-6 mt-6 max-w-7xl mx-auto">
+          {!currentGroup ? (
+            <div>
+                <h2 className="text-3xl font-bold text-white tracking-tight text-serif">Agenda</h2>
+                <p className="text-slate-500 text-sm mt-1">
+                    {view === 'mine' ? 'Mijn plannen' : view === 'history' ? 'Het archief' : 'Alles wat er aan komt'}
+                </p>
+            </div>
+          ) : ( <div></div> )}
+
+          <Link 
+            href={groupId ? `/events/new?group=${groupId}` : "/events/new"} 
+            className="bg-violet-600 px-6 py-2.5 font-bold text-white rounded-full shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:bg-violet-500 hover:scale-105 transition-all"
+          >
             + Nieuw
           </Link>
         </div>
 
-        {!profile?.address && (
-           <div className="mb-6 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-center justify-between">
-              <span>📍 Voeg je adres toe voor route-info.</span>
-              <Link href="/profile" className="font-bold underline hover:text-white">Instellen</Link>
-           </div>
-        )}
+        {/* De adres-prompt is hier VERWIJDERD */}
 
-        <div className="flex p-1 bg-white/5 rounded-xl mb-8 border border-white/5 overflow-x-auto">
+        <div className="flex p-1 bg-white/5 rounded-xl mb-8 border border-white/5 overflow-x-auto max-w-2xl mx-auto">
           <Link 
-            href="/" 
+            href={`/?${groupId ? `group=${groupId}&` : ''}view=upcoming`}
             className={`flex-1 min-w-[80px] text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${view === 'upcoming' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Alles
           </Link>
           <Link 
-            href="/?view=mine" 
+            href={`/?${groupId ? `group=${groupId}&` : ''}view=mine`}
             className={`flex-1 min-w-[80px] text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${view === 'mine' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Mijn Agenda
           </Link>
           <Link 
-            href="/?view=history" 
+            href={`/?${groupId ? `group=${groupId}&` : ''}view=history`}
             className={`flex-1 min-w-[80px] text-center py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${view === 'history' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Archief
           </Link>
         </div>
 
-        <div className="space-y-6">
+        {/* HIER ZIT DE GRID WIJZIGING */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {events && events.length > 0 ? (
             events.map((event) => {
               const { dayString, time, dayNum, cleanMonth, cleanWeekday } = formatDateTimeParts(event.start_at)
@@ -233,7 +271,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
               const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
               
-              // Herbereken hasUnread voor de kaart-weergave (inclusief reacties)
               let hasUnread = lastMessage ? lastMessage > lastRead : false;
               if (!hasUnread) {
                   const myReactions = event.rsvp_reactions?.filter((r: Reaction) => r.target_user_id === user.id) || [];
@@ -243,18 +280,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const createdAt = new Date(event.created_at);
               const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
-              const mapsUrl = profile?.address 
-                  ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(profile.address)}&destination=${encodeURIComponent(event.venue_name)}&travelmode=driving`
-                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.venue_name)}`;
-              
-              const mapsLabel = profile?.address ? "Plan route" : event.venue_name;
+              const mapsUrl = `http://googleusercontent.com/maps.google.com/7{encodeURIComponent(event.venue_name)}`;
+              const mapsLabel = event.venue_name; // Simpel houden
 
               const typeStyle = getEventTypeStyles(event.event_type || '')
 
               return (
                 <div 
                   key={event.id} 
-                  className={`relative border rounded-[2rem] p-6 group overflow-hidden transition-all ${
+                  className={`relative border rounded-[2rem] p-6 group overflow-hidden transition-all flex flex-col ${
                     view === 'history' 
                       ? 'bg-slate-900/30 opacity-75 hover:opacity-100 border-white/5' 
                       : 'bg-slate-900 border-white/10 hover:border-violet-500/30 shadow-lg shadow-black/20'
@@ -351,7 +385,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-white/10">
+                  {/* Spacer om inhoud naar boven te duwen als kaart groeit */}
+                  <div className="mt-auto pt-4 border-t border-white/10">
                     <RsvpControl 
                       eventId={event.id} 
                       myStatus={getMyStatus(event.id)} 
@@ -370,15 +405,23 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               )
             })
           ) : (
-            <div className="text-center py-20 px-6 bg-slate-900/30 rounded-3xl border border-dashed border-slate-800">
+            // Empty state moet over de hele breedte (col-span-full)
+            <div className="col-span-full text-center py-20 px-6 bg-slate-900/30 rounded-3xl border border-dashed border-slate-800">
               <h3 className="text-xl font-bold text-white mb-2">
                 {view === 'mine' ? 'Nog geen plannen' : 'Geen events gevonden'}
               </h3>
               <p className="text-slate-500 mb-4 text-sm">
-                  {view === 'mine' ? 'Zet jezelf op "Gaat" of "Misschien" bij een event om hem hier te zien.' : ''}
+                  {groupId 
+                    ? 'Deze groep heeft nog geen events.' 
+                    : (view === 'mine' ? 'Zet jezelf op "Gaat" of "Misschien" bij een event om hem hier te zien.' : 'Er zijn geen publieke events.')}
               </p>
               {view !== 'history' && (
-                <Link href="/events/new" className="text-violet-400 font-bold hover:text-violet-300 transition-colors">Start met toevoegen →</Link>
+                <Link 
+                    href={groupId ? `/events/new?group=${groupId}` : "/events/new"}
+                    className="text-violet-400 font-bold hover:text-violet-300 transition-colors"
+                >
+                    Start met toevoegen →
+                </Link>
               )}
             </div>
           )}

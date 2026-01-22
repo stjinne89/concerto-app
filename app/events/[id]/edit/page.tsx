@@ -1,51 +1,54 @@
 'use client'
 
-import { updateEvent, getEvent, scrapeEventUrl, deleteEvent } from '@/app/actions'
+import { updateEvent, getEvent, deleteEvent, scrapeEventUrl } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation' // Nodig voor de redirect
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save } from 'lucide-react'
 import Link from 'next/link'
 
+// Omdat dit een dynamische pagina is ([id]), krijgen we 'params' als een Promise
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
+  // We gebruiken 'use' om de params uit te pakken (Nieuw in Next.js/React)
   const { id } = use(params)
-  
+  const router = useRouter()
+
   const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(true)
   const [scrapeUrl, setScrapeUrl] = useState('')
-  const [isFetching, setIsFetching] = useState(true)
-  const [isDeleting, setIsDeleting] = useState(false)
   
   const [formData, setFormData] = useState({
     title: '',
     venue: '',
     description: '',
     start_at: '',
-    type: 'concert',
+    type: 'Concert',
     ticket_link: '',
     ticketswap_link: '',
     resale_link: ''
   })
 
+  // 1. Data ophalen bij het laden van de pagina
   useEffect(() => {
-    const loadData = async () => {
-      const { data, error } = await getEvent(id)
-      if (data) {
-        const dateStr = data.start_at ? new Date(data.start_at).toISOString().slice(0, 16) : ''
-        
-        setFormData({
-            title: data.title || '',
-            venue: data.venue_name || '',
-            description: data.description || '',
-            start_at: dateStr,
-            type: data.event_type || 'concert',
-            ticket_link: data.ticket_link || '',
-            ticketswap_link: data.ticketswap_link || '',
-            resale_link: data.resale_link || ''
-        })
-      }
-      setIsFetching(false)
+    async function loadData() {
+        const data = await getEvent(id)
+        if (data) {
+            setFormData({
+                title: data.title || '',
+                venue: data.venue_name || '', // Let op: in DB heet het venue_name
+                description: data.description || '',
+                start_at: data.start_at ? new Date(data.start_at).toISOString().slice(0, 16) : '',
+                type: data.event_type || 'Concert',
+                ticket_link: data.ticket_link || '',
+                ticketswap_link: data.ticketswap_link || '',
+                resale_link: data.resale_link || ''
+            })
+        }
+        setFetching(false)
     }
     loadData()
   }, [id])
 
+  // 2. Scrape functie (voor als je een betere link hebt gevonden)
   const handleAutoFill = async () => {
     if (!scrapeUrl) return
     setLoading(true)
@@ -53,127 +56,204 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     if (result.success && result.data) {
       setFormData(prev => ({
         ...prev,
-        title: result.data.title,
-        venue: result.data.venue,
-        description: result.data.description,
+        title: result.data.title || prev.title,
+        venue: result.data.venue || prev.venue,
+        description: result.data.description || prev.description,
         start_at: result.data.start_at || prev.start_at,
-        ticket_link: scrapeUrl 
+        ticket_link: scrapeUrl
       }))
     }
     setLoading(false)
   }
 
-  const handleDelete = async () => {
-    if (confirm('Weet je zeker dat je dit event wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
-      setIsDeleting(true)
-      await deleteEvent(id)
-    }
+  // 3. Opslaan (Update)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    await updateEvent(id, formData)
+    
+    // Na opslaan terug naar home
+    router.push('/')
+    router.refresh() 
   }
 
-  if (isFetching) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
-        <Loader2 className="animate-spin mr-2" /> Laden...
-      </div>
-    )
+  // 4. VERWIJDEREN (Hier zat het probleem!)
+  const handleDelete = async () => {
+      if (!confirm('Weet je zeker dat je dit event wilt verwijderen?')) return
+      
+      setLoading(true) // Start cirkeltje
+      const result = await deleteEvent(id)
+      
+      if (result.success) {
+          // Als het gelukt is: DIRECT wegwezen hier!
+          router.push('/') 
+          router.refresh()
+      } else {
+          // Mislukt? Stop cirkeltje en toon error
+          setLoading(false)
+          alert('Kon niet verwijderen: ' + result.error)
+      }
+  }
+
+  if (fetching) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+            <Loader2 className="animate-spin mr-2" /> Laden...
+        </div>
+      )
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-200 p-6 pb-24 selection:bg-violet-500/30">
-      <div className="max-w-lg mx-auto">
-        
-        <header className="flex items-center justify-between mb-8">
-          <Link href="/" className="text-slate-500 hover:text-white transition-colors flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
-            <ArrowLeft size={14} /> Terug
-          </Link>
-          <h1 className="text-xl font-black tracking-tighter text-white">Bewerk Event</h1>
-          <div className="w-12"></div>
-        </header>
-        
-        {/* Scraper Balk */}
-        <div className="bg-violet-500/10 border border-violet-500/20 p-5 rounded-[1.5rem] mb-8">
-          <label className="block text-[10px] font-black text-violet-300 uppercase mb-3 flex items-center gap-2 tracking-widest">
-            <Sparkles size={12} /> Overschrijven met AI
-          </label>
-          <div className="flex gap-2">
-            <input 
-              type="url" 
-              placeholder="Plak hier een link..." 
-              value={scrapeUrl}
-              onChange={(e) => setScrapeUrl(e.target.value)}
-              className="flex-1 bg-slate-950/50 border border-violet-500/30 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-400 placeholder:text-violet-500/30 transition-all"
-            />
-            <button 
-              type="button"
-              onClick={handleAutoFill}
-              disabled={loading}
-              className="bg-violet-600 text-white px-4 rounded-xl hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-[0_0_15px_rgba(124,58,237,0.3)]"
-            >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Link2 size={20} />}
-            </button>
-          </div>
+    <main className="min-h-screen bg-slate-950 text-slate-200 p-6 flex flex-col items-center justify-center">
+      <div className="w-full max-w-md">
+        <Link 
+            href="/" 
+            className="inline-flex items-center gap-2 text-slate-500 hover:text-white mb-8 transition-colors text-sm font-bold uppercase tracking-wider"
+        >
+          <ArrowLeft size={16} /> Annuleren
+        </Link>
+
+        <div className="bg-slate-900 border border-white/10 rounded-[2rem] p-8 shadow-2xl">
+            <div className="flex justify-between items-start mb-6">
+                 <div className="w-16 h-16 rounded-2xl bg-violet-600/20 text-violet-400 flex items-center justify-center">
+                    <Sparkles size={32} />
+                </div>
+                {/* DELETE KNOP */}
+                <button 
+                    onClick={handleDelete}
+                    type="button"
+                    className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors"
+                    title="Verwijder Event"
+                >
+                    <Trash2 size={20} />
+                </button>
+            </div>
+
+            <h1 className="text-2xl font-black text-white tracking-tight mb-8 text-center">Event Bewerken</h1>
+            
+            {/* Scrape input voor updates */}
+            <div className="mb-8 relative">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                    <Link2 size={16} className="text-slate-500" />
+                </div>
+                <input 
+                    type="url" 
+                    value={scrapeUrl}
+                    onChange={(e) => setScrapeUrl(e.target.value)}
+                    placeholder="Nieuwe link scrapen?" 
+                    className="w-full bg-slate-950 border border-violet-500/30 rounded-2xl pl-11 pr-12 py-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all shadow-inner"
+                />
+                <button 
+                    onClick={handleAutoFill}
+                    disabled={loading || !scrapeUrl}
+                    type="button"
+                    className="absolute right-2 top-2 bottom-2 aspect-square bg-violet-600 hover:bg-violet-500 text-white rounded-xl flex items-center justify-center transition-all disabled:opacity-50 disabled:hover:bg-violet-600"
+                >
+                    {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                </button>
+            </div>
+
+            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-8" />
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+                
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Wat?</label>
+                    <input 
+                        name="title" required placeholder="Naam van event / artiest" 
+                        value={formData.title}
+                        onChange={e => setFormData({...formData, title: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all font-medium"
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Wanneer?</label>
+                        <input 
+                            name="start_at" type="datetime-local" required 
+                            value={formData.start_at}
+                            onChange={e => setFormData({...formData, start_at: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Type</label>
+                        <select 
+                            name="type" 
+                            value={formData.type}
+                            onChange={e => setFormData({...formData, type: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none"
+                        >
+                            <option value="Concert" className="bg-slate-900">Concert</option>
+                            <option value="Festival" className="bg-slate-900">Festival</option>
+                            <option value="Club" className="bg-slate-900">Club / Nacht</option>
+                            <option value="Theater" className="bg-slate-900">Theater</option>
+                            <option value="Sport" className="bg-slate-900">Sport</option>
+                            <option value="Overig" className="bg-slate-900">Overig</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Waar?</label>
+                    <input 
+                        name="venue" required placeholder="Locatie (bijv. Paradiso)" 
+                        value={formData.venue}
+                        onChange={e => setFormData({...formData, venue: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
+                    />
+                </div>
+
+                <div className="space-y-3 pt-2">
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                            <Ticket size={16} className="text-slate-500 group-focus-within:text-violet-400 transition-colors" />
+                        </div>
+                        <input 
+                            name="ticket_link" type="url" placeholder="Officiële Tickets" 
+                            value={formData.ticket_link}
+                            onChange={e => setFormData({...formData, ticket_link: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
+                        />
+                    </div>
+
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                            <Repeat size={16} className="text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                        </div>
+                        <input 
+                            name="ticketswap_link" type="url" placeholder="TicketSwap Link" 
+                            value={formData.ticketswap_link}
+                            onChange={e => setFormData({...formData, ticketswap_link: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                        />
+                    </div>
+
+                    <div className="relative group">
+                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                            <RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" />
+                        </div>
+                        <input 
+                            name="resale_link" type="url" placeholder="Extra Resale" 
+                            value={formData.resale_link}
+                            onChange={e => setFormData({...formData, resale_link: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
+                        />
+                    </div>
+                </div>
+
+                <div className="pt-4">
+                    <button 
+                        type="submit" 
+                        disabled={loading}
+                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] transition-all shadow-lg shadow-violet-900/20 active:scale-[0.98] disabled:opacity-50"
+                    >
+                        {loading ? <Loader2 className="animate-spin" /> : <><Save size={20} /> Opslaan</>}
+                    </button>
+                </div>
+            </form>
         </div>
-
-        <form action={updateEvent} className="space-y-6">
-          <input type="hidden" name="event_id" value={id} />
-
-          <div className="bg-slate-900/50 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-8 shadow-2xl space-y-6">
-            
-            <div className="space-y-6">
-                <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Titel</label>
-                    <input name="title" required type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all" />
-                </div>
-                <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Type</label>
-                    <select name="type" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer">
-                        <option value="concert" className="bg-slate-900">Concert</option>
-                        <option value="festival" className="bg-slate-900">Festival</option>
-                        <option value="listening_session" className="bg-slate-900">Luistersessie</option>
-                        <option value="club_night" className="bg-slate-900">Club Night</option>
-                        <option value="other" className="bg-slate-900">Anders</option>
-                    </select>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Datum</label>
-                    <input name="start_at" required type="datetime-local" value={formData.start_at} onChange={e => setFormData({...formData, start_at: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all [color-scheme:dark]" />
-                </div>
-                <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 ml-1">Locatie</label>
-                    <input name="venue" required type="text" value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all" />
-                </div>
-            </div>
-
-            
-          </div>
-
-          <div className="pt-4 space-y-4">
-            <button 
-                type="submit" 
-                className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] transition-all shadow-lg shadow-violet-900/20 active:scale-[0.98]"
-            >
-                Wijzigingen Opslaan
-            </button>
-            
-            <button 
-                type="button"
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="w-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest text-red-500/60 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 py-4 rounded-[2rem] transition-all"
-            >
-                {isDeleting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
-                Event Verwijderen
-            </button>
-
-            <Link href="/" className="block text-center text-xs font-bold uppercase tracking-widest text-slate-600 hover:text-white transition-colors py-2">
-                Annuleren
-            </Link>
-          </div>
-
-        </form>
       </div>
     </main>
   )
