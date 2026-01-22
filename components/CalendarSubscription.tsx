@@ -1,15 +1,22 @@
 'use client'
 
 import { Copy, Check } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function CalendarSubscription({ userId }: { userId: string }) {
   const [copied, setCopied] = useState(false)
+  const [feedUrl, setFeedUrl] = useState('')
 
-  // Dit is de magische link die de API uit Stap 1 aanroept
-  const feedUrl = `${window.location.origin}/api/calendar/${userId}`
+  // We gebruiken useEffect om de URL pas op te halen als de browser geladen is.
+  // Dit voorkomt de "window is not defined" error op de server.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setFeedUrl(`${window.location.origin}/api/calendar/${userId}`)
+    }
+  }, [userId])
 
   const copyToClipboard = () => {
+    if (!feedUrl) return
     navigator.clipboard.writeText(feedUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 3000)
@@ -27,11 +34,13 @@ export default function CalendarSubscription({ userId }: { userId: string }) {
           type="text" 
           value={feedUrl} 
           readOnly 
+          placeholder="Laden..."
           className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 text-xs text-slate-500 focus:outline-none"
         />
         <button 
           onClick={copyToClipboard}
-          className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors"
+          disabled={!feedUrl}
+          className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
           {copied ? 'Gekopieerd!' : 'Kopieer'}

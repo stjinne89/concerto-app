@@ -12,6 +12,13 @@ type Rsvp = {
   last_read_at: string | null
 }
 
+type Reaction = {
+  id: string
+  created_at: string
+  target_user_id: string
+  actor_user_id: string
+}
+
 function formatDateTimeParts(dateString: string) {
   const date = new Date(dateString)
   const timeZone = 'Europe/Amsterdam'
@@ -51,10 +58,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 2. PROFIEL + ADRES OPHALEN
   const { data: profile } = await supabase
     .from('profiles')
-    .select('avatar_url, full_name, address') // <-- Address toegevoegd
+    .select('avatar_url, full_name, address')
     .eq('id', user.id)
     .single()
 
@@ -103,7 +109,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     return rsvp?.status
   }
 
-  // 3. SLIMME NOTIFICATIE LOGICA (Gesplitst)
+  // --- SLIMME NOTIFICATIE LOGICA ---
   let unreadChatCount = 0;
   let newEventCount = 0;
   
@@ -111,26 +117,36 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       rawEvents.forEach((event) => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
           
+          // Wanneer heb ik voor het laatst gekeken?
           const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
+          
+          // 1. Check ongelezen CHATberichten
           const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
           const hasUnreadChat = lastMessage ? lastMessage > lastRead : false;
 
+          // 2. Check ongelezen EMOJI reacties (NIEUW)
+          // Is er een reactie op MIJ, van IEMAND ANDERS, die NIEUWER is dan mijn laatste bezoek?
+          const myReactions = event.rsvp_reactions?.filter((r: Reaction) => r.target_user_id === user.id) || [];
+          const hasNewReaction = myReactions.some((r: Reaction) => {
+             const reactionTime = new Date(r.created_at);
+             return reactionTime > lastRead && r.actor_user_id !== user.id;
+          });
+
+          // 3. Check NIEUW EVENT (alleen als ik nog geen status heb)
           const createdAt = new Date(event.created_at);
           const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
-          if (hasUnreadChat) {
+          // Tellen maar: Rood (Social) vs Groen (Info)
+          if (hasUnreadChat || hasNewReaction) {
               unreadChatCount++;
           } else if (isNewEvent) {
-              // We tellen het event alleen als 'nieuw' als er geen ongelezen chat is
-              // (Chat is urgenter, anders krijg je dubbele bolletjes)
               newEventCount++;
           }
       });
   }
 
-  // Bepaal de badge kleur en aantal voor de navbar
-  // Rood (Chat) wint van Groen (Nieuw Event)
   const totalBadgeCount = unreadChatCount + newEventCount;
+  // Rood (Chat/Emoji) wint altijd van Groen (Nieuw Event)
   const badgeColor = unreadChatCount > 0 ? 'bg-red-500' : 'bg-emerald-500';
 
   return (
@@ -143,7 +159,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         </h1>
         
         <Link href="/profile" className="relative flex items-center gap-3 pl-4 py-1 pr-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all group">
-            {/* 4. SLIMME BADGE WEERGAVE */}
             {totalBadgeCount > 0 && (
                 <div className={`absolute -top-1 -right-1 ${badgeColor} text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-lg z-10 animate-pulse`}>
                     {totalBadgeCount}
@@ -180,7 +195,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           </Link>
         </div>
 
-        {/* MELDING OVER ADRES ALS HET ONTBTREEKT */}
         {!profile?.address && (
            <div className="mb-6 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-center justify-between">
               <span>📍 Voeg je adres toe voor route-info.</span>
@@ -218,17 +232,22 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               
               const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
               const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
-              const hasUnread = lastMessage ? lastMessage > lastRead : false;
+              
+              // Herbereken hasUnread voor de kaart-weergave (inclusief reacties)
+              let hasUnread = lastMessage ? lastMessage > lastRead : false;
+              if (!hasUnread) {
+                  const myReactions = event.rsvp_reactions?.filter((r: Reaction) => r.target_user_id === user.id) || [];
+                  hasUnread = myReactions.some((r: Reaction) => new Date(r.created_at) > lastRead && r.actor_user_id !== user.id);
+              }
               
               const createdAt = new Date(event.created_at);
               const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
-              // 5. ROUTE LOGICA: Als adres bekend is, gebruik "dir" (directions), anders gewone search
               const mapsUrl = profile?.address 
-                  ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(profile.address)}&destination=${encodeURIComponent(event.venue_name)}`
-                  : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(event.venue_name)}`;
+                  ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(profile.address)}&destination=${encodeURIComponent(event.venue_name)}&travelmode=driving`
+                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.venue_name)}`;
               
-              const mapsLabel = profile?.address ? "Route vanaf thuis" : event.venue_name;
+              const mapsLabel = profile?.address ? "Plan route" : event.venue_name;
 
               const typeStyle = getEventTypeStyles(event.event_type || '')
 
@@ -308,7 +327,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                         </a>
 
                         <div className="flex flex-wrap gap-2 mt-2">
-                            
                             {event.ticket_link && (
                                 <a href={event.ticket_link} target="_blank" rel="noopener noreferrer" 
                                    className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors flex items-center gap-1">
@@ -338,7 +356,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                       eventId={event.id} 
                       myStatus={getMyStatus(event.id)} 
                       allRsvps={event.rsvps || []}
-                      initialReactions={event.rsvp_reactions || []} // <-- DEZE TOEVOEGEN
+                      initialReactions={event.rsvp_reactions || []}
                       currentUserId={user.id}
                     />
                     
