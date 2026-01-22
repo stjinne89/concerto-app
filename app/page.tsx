@@ -73,7 +73,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           full_name,
           avatar_url
         )
-      )
+      ),
+      rsvp_reactions (*)
     `)
 
   if (view === 'history') {
@@ -337,6 +338,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                       eventId={event.id} 
                       myStatus={getMyStatus(event.id)} 
                       allRsvps={event.rsvps || []}
+                      initialReactions={event.rsvp_reactions || []} // <-- DEZE TOEVOEGEN
+                      currentUserId={user.id}
                     />
                     
                     <EventChat 

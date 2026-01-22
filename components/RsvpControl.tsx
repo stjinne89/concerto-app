@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, Check, HelpCircle, X, Loader2 } from 'lucide-react'
+import { ChevronDown, Check, HelpCircle, X, Loader2, Plus } from 'lucide-react'
 
+// Types
 type RsvpWithProfile = {
   status: string
   user_id: string
@@ -14,63 +15,103 @@ type RsvpWithProfile = {
   } | null
 }
 
+type Reaction = {
+  id: string
+  target_user_id: string
+  actor_user_id: string
+  emoji: string
+}
+
 interface RsvpControlProps {
   eventId: string
   myStatus?: string
   allRsvps: any[]
+  initialReactions: Reaction[]
+  currentUserId: string
 }
 
-export default function RsvpControl({ eventId, myStatus, allRsvps }: RsvpControlProps) {
+export default function RsvpControl({ eventId, myStatus, allRsvps, initialReactions, currentUserId }: RsvpControlProps) {
   const [loading, setLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const [reactions, setReactions] = useState<Reaction[]>(initialReactions)
+  const [activeReactionId, setActiveReactionId] = useState<string | null>(null) // Welke gebruiker staat open voor reacties?
+  
   const supabase = createClient()
   const router = useRouter()
 
   const rsvps = allRsvps as RsvpWithProfile[]
+  const EMOJI_OPTIONS = ['🔥', '🍻', '🎉', '❤️', '🫡']
 
+  // --- RSVP LOGICA ---
   const handleRsvp = async (newStatus: string) => {
     if (loading) return
     setLoading(true)
     
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      // Toggle logica: Als je klikt op wat je al hebt, verwijder je de RSVP
       if (myStatus === newStatus) {
-          const { error } = await supabase
-            .from('rsvps')
-            .delete()
-            .eq('event_id', eventId)
-            .eq('user_id', user.id)
-          
+          const { error } = await supabase.from('rsvps').delete().eq('event_id', eventId).eq('user_id', currentUserId)
           if (error) throw error
       } else {
-          const { error } = await supabase
-            .from('rsvps')
-            .upsert({
-              event_id: eventId,
-              user_id: user.id,
-              status: newStatus
-            }, { 
-              onConflict: 'event_id, user_id'
-            })
-          
+          const { error } = await supabase.from('rsvps').upsert({
+              event_id: eventId, user_id: currentUserId, status: newStatus
+            }, { onConflict: 'event_id, user_id' })
           if (error) throw error
       }
-
       router.refresh()
     } catch (error) {
       console.error('RSVP Error:', error)
-      alert('Kon status niet aanpassen. Check je internet of rechten.')
     } finally {
       setLoading(false)
       setIsOpen(false)
     }
   }
 
+  // --- REACTION LOGICA ---
+  const handleReaction = async (targetUserId: string, emoji: string) => {
+    // 1. Optimistic Update (meteen tonen)
+    const existing = reactions.find(r => 
+        r.target_user_id === targetUserId && 
+        r.actor_user_id === currentUserId && 
+        r.emoji === emoji
+    )
+
+    let newReactions = [...reactions]
+    if (existing) {
+        // Verwijder als hij al bestaat (toggle off)
+        newReactions = newReactions.filter(r => r.id !== existing.id)
+    } else {
+        // Voeg toe (toggle on) - fake ID voor nu
+        newReactions.push({
+            id: 'temp-' + Date.now(),
+            target_user_id: targetUserId,
+            actor_user_id: currentUserId,
+            emoji
+        })
+    }
+    setReactions(newReactions)
+    setActiveReactionId(null) // Sluit menu na keuze
+
+    // 2. Database Update
+    try {
+        if (existing) {
+            await supabase.from('rsvp_reactions').delete().eq('id', existing.id)
+        } else {
+            await supabase.from('rsvp_reactions').insert({
+                event_id: eventId,
+                target_user_id: targetUserId,
+                actor_user_id: currentUserId,
+                emoji
+            })
+        }
+        router.refresh()
+    } catch (error) {
+        console.error('Reaction failed', error)
+        setReactions(initialReactions) // Rollback bij fout
+    }
+  }
+
+  // --- HELPERS ---
   const sortedRsvps = [...rsvps].sort((a, b) => {
-    // AANGEPAST: Hier stond nog 'not_going', nu 'cant'
     const order: {[key: string]: number} = { going: 1, interested: 2, cant: 3 }
     return (order[a.status] || 4) - (order[b.status] || 4)
   })
@@ -82,7 +123,6 @@ export default function RsvpControl({ eventId, myStatus, allRsvps }: RsvpControl
       switch(status) {
           case 'going': return { color: 'bg-emerald-500', text: 'text-emerald-500', label: 'Gaat', icon: Check }
           case 'interested': return { color: 'bg-amber-500', text: 'text-amber-500', label: 'Interesse', icon: HelpCircle }
-          // AANGEPAST: 'cant' toegevoegd als hoofd-case
           case 'cant': return { color: 'bg-slate-500', text: 'text-slate-500', label: 'Niet', icon: X }
           default: return { color: 'bg-slate-500', text: 'text-slate-500', label: '?', icon: HelpCircle }
       }
@@ -90,11 +130,11 @@ export default function RsvpControl({ eventId, myStatus, allRsvps }: RsvpControl
 
   const isGoing = myStatus === 'going'
   const isInterested = myStatus === 'interested'
-  // AANGEPAST: Check op 'cant'
   const isCant = myStatus === 'cant'
 
   return (
     <div className="mt-4">
+      {/* 1. HEADER */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-3 text-sm font-bold uppercase tracking-wider text-slate-300 hover:text-white transition-colors mb-4 w-full"
@@ -124,34 +164,94 @@ export default function RsvpControl({ eventId, myStatus, allRsvps }: RsvpControl
         <ChevronDown size={16} className={`transition-transform opacity-50 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
+      {/* 2. UITKLAPLIJST MET REACTIES */}
       {isOpen && (
           <div className="mb-4 bg-slate-900/50 border border-white/5 rounded-2xl p-2 space-y-1 animate-in slide-in-from-top-2 fade-in duration-200">
               {sortedRsvps.length > 0 ? sortedRsvps.map((r) => {
                   const info = getStatusInfo(r.status)
+                  const userReactions = reactions.filter(react => react.target_user_id === r.user_id)
+                  
+                  // Groepeer emoji's (bijv: "🔥 x2")
+                  const emojiCounts: {[key: string]: number} = {}
+                  userReactions.forEach(react => {
+                      emojiCounts[react.emoji] = (emojiCounts[react.emoji] || 0) + 1
+                  })
+
+                  const isMenuOpen = activeReactionId === r.user_id
+
                   return (
-                    <div key={r.user_id} className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-colors">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden border-2 border-slate-900 relative shadow-sm">
-                                {r.profiles?.avatar_url ? (
-                                    <img src={r.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-sm font-bold text-slate-400">
-                                        {r.profiles?.full_name?.charAt(0)}
+                    <div key={r.user_id} className="relative group/item">
+                        <div 
+                            // Klikken op de rij opent het emoji menu
+                            onClick={() => setActiveReactionId(isMenuOpen ? null : r.user_id)}
+                            className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden border-2 border-slate-900 relative shadow-sm">
+                                    {r.profiles?.avatar_url ? (
+                                        <img src={r.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-sm font-bold text-slate-400">
+                                            {r.profiles?.full_name?.charAt(0)}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="block text-sm font-bold text-slate-200">
+                                            {r.profiles?.full_name?.split(' ')[0] || 'Onbekend'}
+                                        </span>
+                                        {/* Toon de ontvangen emoji's */}
+                                        <div className="flex gap-1">
+                                            {Object.entries(emojiCounts).map(([emoji, count]) => (
+                                                <span key={emoji} className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded-full border border-white/5 text-slate-300">
+                                                    {emoji} {count > 1 && <span className="text-[9px] opacity-70 ml-0.5 font-bold">x{count}</span>}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                            <div>
-                                <span className="block text-sm font-bold text-slate-200">
-                                    {r.profiles?.full_name?.split(' ')[0] || 'Onbekend'}
-                                </span>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${info.color}`} />
-                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${info.text}`}>
-                                        {info.label}
-                                    </span>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${info.color}`} />
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${info.text}`}>
+                                            {info.label}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            {/* Klein plusje dat verschijnt bij hover */}
+                            <div className={`opacity-0 group-hover/item:opacity-100 transition-opacity text-slate-500 ${isMenuOpen ? 'opacity-100' : ''}`}>
+                                <Plus size={16} />
+                            </div>
                         </div>
+
+                        {/* HET EMOJI MENU (POPOVER) */}
+                        {isMenuOpen && (
+                            <div className="absolute left-14 bottom-10 z-20 bg-slate-800 border border-slate-700 shadow-xl rounded-full flex gap-1 p-1 animate-in zoom-in-95 duration-100">
+                                {EMOJI_OPTIONS.map(emoji => {
+                                    const hasReacted = userReactions.some(re => re.actor_user_id === currentUserId && re.emoji === emoji)
+                                    return (
+                                        <button
+                                            key={emoji}
+                                            onClick={(e) => {
+                                                e.stopPropagation() // Voorkom dat de rij sluit
+                                                handleReaction(r.user_id, emoji)
+                                            }}
+                                            className={`w-8 h-8 flex items-center justify-center rounded-full text-lg hover:scale-125 transition-transform ${hasReacted ? 'bg-white/10 border border-white/20' : 'hover:bg-white/5'}`}
+                                        >
+                                            {emoji}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
+                        {/* Overlay om menu te sluiten als je ernaast klikt */}
+                        {isMenuOpen && (
+                            <div 
+                                className="fixed inset-0 z-10" 
+                                onClick={() => setActiveReactionId(null)}
+                            />
+                        )}
                     </div>
                   )
               }) : (
@@ -160,6 +260,7 @@ export default function RsvpControl({ eventId, myStatus, allRsvps }: RsvpControl
           </div>
       )}
 
+      {/* 3. KNOPPEN (Jouw status) */}
       <div className="flex p-1 bg-slate-900/50 rounded-xl border border-white/5 shadow-sm relative">
         {loading && <div className="absolute inset-0 bg-slate-950/50 z-10 rounded-xl flex items-center justify-center"><Loader2 className="animate-spin text-white"/></div>}
         
@@ -175,8 +276,6 @@ export default function RsvpControl({ eventId, myStatus, allRsvps }: RsvpControl
         >
             Interesse
         </button>
-        
-        {/* AANGEPAST: Functie en stijl checken nu op 'cant' */}
         <button 
             onClick={() => handleRsvp('cant')}
             className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${isCant ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}`}
