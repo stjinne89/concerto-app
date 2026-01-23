@@ -207,10 +207,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         </Link>
       </nav>
 
-      {/* LET OP: Hier heb ik max-w-lg weggehaald en vervangen door max-w-7xl voor de grid layout */}
       <div className="max-w-7xl mx-auto p-4 pt-24">
         
-        {/* Beperk breedte voor switcher en hero zodat ze niet te breed worden op desktop */}
         <div className="max-w-2xl mx-auto">
             <GroupSwitcher groups={groups} />
             {currentGroup && (
@@ -237,8 +235,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           </Link>
         </div>
 
-        {/* De adres-prompt is hier VERWIJDERD */}
-
         <div className="flex p-1 bg-white/5 rounded-xl mb-8 border border-white/5 overflow-x-auto max-w-2xl mx-auto">
           <Link 
             href={`/?${groupId ? `group=${groupId}&` : ''}view=upcoming`}
@@ -260,7 +256,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           </Link>
         </div>
 
-        {/* HIER ZIT DE GRID WIJZIGING */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {events && events.length > 0 ? (
             events.map((event) => {
@@ -281,131 +276,157 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
 
               const mapsUrl = `http://googleusercontent.com/maps.google.com/7{encodeURIComponent(event.venue_name)}`;
-              const mapsLabel = event.venue_name; // Simpel houden
+              const mapsLabel = event.venue_name; 
 
               const typeStyle = getEventTypeStyles(event.event_type || '')
 
               return (
                 <div 
                   key={event.id} 
-                  className={`relative border rounded-[2rem] p-6 group overflow-hidden transition-all flex flex-col ${
+                  className={`relative border rounded-[2rem] group overflow-hidden transition-all flex flex-col ${
                     view === 'history' 
                       ? 'bg-slate-900/30 opacity-75 hover:opacity-100 border-white/5' 
                       : 'bg-slate-900 border-white/10 hover:border-violet-500/30 shadow-lg shadow-black/20'
                   }`}
                 >
                   
+                  {/* --- NIEUW: HET PLAATJE --- */}
+                  {event.image_url ? (
+                      <div className="h-40 w-full relative overflow-hidden bg-slate-800">
+                          {/* Gradiënt voor leesbaarheid */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 opacity-90" />
+                          <img 
+                              src={event.image_url} 
+                              alt={event.title} 
+                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                          />
+                          
+                          {/* Badges over de foto heen */}
+                          <div className="absolute top-4 left-4 z-20 flex gap-2">
+                               <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border backdrop-blur-md shadow-lg ${view === 'history' ? 'text-slate-400 border-slate-600 bg-slate-900/80' : typeStyle}`}>
+                                {event.event_type}
+                              </span>
+                              {isNewEvent && (
+                                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/80 text-white border border-emerald-500/50 backdrop-blur-md animate-pulse shadow-lg">
+                                      Nieuw
+                                  </span>
+                              )}
+                          </div>
+                      </div>
+                  ) : (
+                      /* Geen foto? Dan alleen wat ruimte bovenin */
+                      <div className="pt-6 px-6 flex justify-between items-start">
+                           <div className="flex gap-2">
+                              <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : typeStyle}`}>
+                                {event.event_type}
+                              </span>
+                              {isNewEvent && (
+                                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
+                                      Nieuw
+                                  </span>
+                              )}
+                          </div>
+                      </div>
+                  )}
+
                   {isCreator && (
                      <Link 
                        href={`/events/${event.id}/edit`}
-                       className="absolute top-5 right-5 z-10 p-2 rounded-full bg-white/5 text-slate-400 hover:text-white hover:bg-violet-600 transition-all"
+                       className="absolute top-4 right-4 z-30 p-2 rounded-full bg-black/40 backdrop-blur-md text-slate-300 hover:text-white hover:bg-violet-600 transition-all border border-white/10"
                      >
                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                      </Link>
                   )}
 
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex gap-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : typeStyle}`}>
-                          {event.event_type}
-                        </span>
-
-                        {isNewEvent && (
-                            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
-                                Nieuw
-                            </span>
-                        )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-5 items-start mb-6">
-                    <div className={`border rounded-2xl p-3 min-w-[75px] text-center flex flex-col justify-center h-full ${view === 'history' ? 'bg-white/5 border-white/5 text-slate-500' : 'bg-white/5 border-white/10'}`}>
-                      <span className="text-xs font-bold text-slate-400 uppercase leading-none mb-1">{cleanWeekday}</span>
-                      <span className="text-2xl font-black text-white block leading-none">{dayNum}</span>
-                      <span className="text-xs font-bold text-slate-400 uppercase mt-1 block leading-tight">{cleanMonth}</span>
-                    </div>
+                  <div className={`p-6 flex-1 flex flex-col ${event.image_url ? 'pt-2' : ''}`}>
                     
-                    <div className="flex-1 min-w-0 pr-8">
-                      <h3 className={`text-xl font-bold break-words text-serif leading-tight ${view === 'history' ? 'text-slate-400' : 'text-white'}`}>
-                        {event.ticket_link ? (
-                            <a 
-                                href={event.ticket_link} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="hover:text-violet-400 transition-colors decoration-violet-500/50 underline-offset-4 hover:underline"
-                            >
-                                {event.title}
-                                <span className="inline-block ml-1 opacity-50 text-sm">↗</span>
-                            </a>
-                        ) : (
-                            event.title
-                        )}
-                      </h3>
+                    <div className="flex gap-5 items-start mb-6">
+                      <div className={`border rounded-2xl p-3 min-w-[75px] text-center flex flex-col justify-center h-full ${view === 'history' ? 'bg-white/5 border-white/5 text-slate-500' : 'bg-white/5 border-white/10'}`}>
+                        <span className="text-xs font-bold text-slate-400 uppercase leading-none mb-1">{cleanWeekday}</span>
+                        <span className="text-2xl font-black text-white block leading-none">{dayNum}</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase mt-1 block leading-tight">{cleanMonth}</span>
+                      </div>
+                      
+                      <div className="flex-1 min-w-0 pr-8">
+                        <h3 className={`text-xl font-bold break-words text-serif leading-tight ${view === 'history' ? 'text-slate-400' : 'text-white'}`}>
+                          {event.ticket_link ? (
+                              <a 
+                                  href={event.ticket_link} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="hover:text-violet-400 transition-colors decoration-violet-500/50 underline-offset-4 hover:underline"
+                              >
+                                  {event.title}
+                                  <span className="inline-block ml-1 opacity-50 text-sm">↗</span>
+                              </a>
+                          ) : (
+                              event.title
+                          )}
+                        </h3>
 
-                      <div className="text-sm text-slate-400 mt-2 flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2">
-                          <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                          <span>{time}</span>
+                        <div className="text-sm text-slate-400 mt-2 flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span>{time}</span>
+                          </div>
+                          <a 
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 group/location hover:text-violet-400 transition-colors cursor-pointer"
+                            title="Open route in Google Maps"
+                          >
+                             <svg className="w-3.5 h-3.5 opacity-50 group-hover/location:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                             <span className="truncate underline decoration-dotted decoration-white/20 underline-offset-4 group-hover/location:decoration-violet-400">
+                                 {mapsLabel}
+                             </span>
+                          </a>
+
+                          <div className="flex flex-wrap gap-2 mt-2">
+                              {event.ticket_link && (
+                                  <a href={event.ticket_link} target="_blank" rel="noopener noreferrer" 
+                                     className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors flex items-center gap-1">
+                                     🎫 Tickets
+                                  </a>
+                              )}
+                              {event.ticketswap_link && (
+                                  <a href={event.ticketswap_link} target="_blank" rel="noopener noreferrer" 
+                                     className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors flex items-center gap-1">
+                                     🔄 Swap
+                                  </a>
+                              )}
+                              {event.resale_link && (
+                                  <a href={event.resale_link} target="_blank" rel="noopener noreferrer" 
+                                     className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center gap-1">
+                                     ♻️ Resale
+                                  </a>
+                              )}
+                          </div>
+
                         </div>
-                        <a 
-                          href={mapsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 group/location hover:text-violet-400 transition-colors cursor-pointer"
-                          title="Open route in Google Maps"
-                        >
-                           <svg className="w-3.5 h-3.5 opacity-50 group-hover/location:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                           <span className="truncate underline decoration-dotted decoration-white/20 underline-offset-4 group-hover/location:decoration-violet-400">
-                               {mapsLabel}
-                           </span>
-                        </a>
-
-                        <div className="flex flex-wrap gap-2 mt-2">
-                            {event.ticket_link && (
-                                <a href={event.ticket_link} target="_blank" rel="noopener noreferrer" 
-                                   className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors flex items-center gap-1">
-                                   🎫 Tickets
-                                </a>
-                            )}
-                            {event.ticketswap_link && (
-                                <a href={event.ticketswap_link} target="_blank" rel="noopener noreferrer" 
-                                   className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors flex items-center gap-1">
-                                   🔄 Swap
-                                </a>
-                            )}
-                            {event.resale_link && (
-                                <a href={event.resale_link} target="_blank" rel="noopener noreferrer" 
-                                   className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center gap-1">
-                                   ♻️ Resale
-                                </a>
-                            )}
-                        </div>
-
                       </div>
                     </div>
-                  </div>
 
-                  {/* Spacer om inhoud naar boven te duwen als kaart groeit */}
-                  <div className="mt-auto pt-4 border-t border-white/10">
-                    <RsvpControl 
-                      eventId={event.id} 
-                      myStatus={getMyStatus(event.id)} 
-                      allRsvps={event.rsvps || []}
-                      initialReactions={event.rsvp_reactions || []}
-                      currentUserId={user.id}
-                    />
-                    
-                    <EventChat 
+                    <div className="mt-auto pt-4 border-t border-white/10">
+                      <RsvpControl 
                         eventId={event.id} 
-                        currentUserId={user.id} 
-                        hasUnread={hasUnread} 
-                    />
+                        myStatus={getMyStatus(event.id)} 
+                        allRsvps={event.rsvps || []}
+                        initialReactions={event.rsvp_reactions || []}
+                        currentUserId={user.id}
+                      />
+                      
+                      <EventChat 
+                          eventId={event.id} 
+                          currentUserId={user.id} 
+                          hasUnread={hasUnread} 
+                      />
+                    </div>
                   </div>
                 </div>
               )
             })
           ) : (
-            // Empty state moet over de hele breedte (col-span-full)
             <div className="col-span-full text-center py-20 px-6 bg-slate-900/30 rounded-3xl border border-dashed border-slate-800">
               <h3 className="text-xl font-bold text-white mb-2">
                 {view === 'mine' ? 'Nog geen plannen' : 'Geen events gevonden'}

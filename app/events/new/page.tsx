@@ -3,7 +3,7 @@
 import { createEvent, scrapeEventUrl, getGroupName } from '@/app/actions'
 import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, X } from 'lucide-react'
 import Link from 'next/link'
 
 function NewEventForm() {
@@ -12,9 +12,9 @@ function NewEventForm() {
 
   const [loading, setLoading] = useState(false)
   const [scrapeUrl, setScrapeUrl] = useState('')
-  const [groupName, setGroupName] = useState<string | null>(null) // Hier slaan we de naam op
+  const [groupName, setGroupName] = useState<string | null>(null)
   
-  // NIEUW: Haal de groepsnaam op zodra de pagina laadt
+  // Haal de groepsnaam op
   useEffect(() => {
     if (groupId) {
         getGroupName(groupId).then(name => setGroupName(name))
@@ -29,7 +29,8 @@ function NewEventForm() {
     type: 'Concert',
     ticket_link: '',
     ticketswap_link: '',
-    resale_link: ''
+    resale_link: '',
+    image_url: '' // <--- NIEUW: Hier slaan we de link naar het plaatje op
   })
 
   const handleAutoFill = async () => {
@@ -46,6 +47,7 @@ function NewEventForm() {
           venue: result.data.venue || prev.venue,
           description: result.data.description || prev.description,
           start_at: result.data.start_at || prev.start_at,
+          image_url: result.data.image_url || prev.image_url, // <--- NIEUW: Plaatje invullen
           ticket_link: scrapeUrl
         }))
       }
@@ -81,7 +83,6 @@ function NewEventForm() {
 
             <h1 className="text-2xl font-black text-white tracking-tight mb-2 text-center">Nieuw Event</h1>
             
-            {/* AANGEPAST: Nu met de echte naam! */}
             <p className="text-slate-500 mb-8 text-center text-sm">
                 {groupId 
                     ? (
@@ -113,6 +114,25 @@ function NewEventForm() {
                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                 </button>
             </div>
+
+            {/* --- NIEUW: IMAGE PREVIEW --- */}
+            {formData.image_url && (
+                <div className="mb-8 relative h-48 w-full rounded-2xl overflow-hidden border border-white/10 shadow-lg group animate-in fade-in slide-in-from-top-4">
+                    <img 
+                        src={formData.image_url} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover" 
+                    />
+                    {/* Knop om plaatje te verwijderen */}
+                    <button
+                        type="button"
+                        onClick={() => setFormData({...formData, image_url: ''})}
+                        className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full transition-colors backdrop-blur-sm"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
 
             <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-8" />
 

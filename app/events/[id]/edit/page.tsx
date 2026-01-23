@@ -2,8 +2,8 @@
 
 import { updateEvent, getEvent, deleteEvent, scrapeEventUrl } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation' // Nodig voor de redirect
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save } from 'lucide-react'
+import { useRouter } from 'next/navigation' 
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X } from 'lucide-react'
 import Link from 'next/link'
 
 // Omdat dit een dynamische pagina is ([id]), krijgen we 'params' als een Promise
@@ -24,7 +24,8 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     type: 'Concert',
     ticket_link: '',
     ticketswap_link: '',
-    resale_link: ''
+    resale_link: '',
+    image_url: '' // <--- NIEUW: State voor de foto
   })
 
   // 1. Data ophalen bij het laden van de pagina
@@ -40,7 +41,8 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                 type: data.event_type || 'Concert',
                 ticket_link: data.ticket_link || '',
                 ticketswap_link: data.ticketswap_link || '',
-                resale_link: data.resale_link || ''
+                resale_link: data.resale_link || '',
+                image_url: data.image_url || '' // <--- NIEUW: Laad opgeslagen foto
             })
         }
         setFetching(false)
@@ -60,6 +62,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
         venue: result.data.venue || prev.venue,
         description: result.data.description || prev.description,
         start_at: result.data.start_at || prev.start_at,
+        image_url: result.data.image_url || prev.image_url, // <--- NIEUW: Update foto indien gevonden
         ticket_link: scrapeUrl
       }))
     }
@@ -77,19 +80,17 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     router.refresh() 
   }
 
-  // 4. VERWIJDEREN (Hier zat het probleem!)
+  // 4. VERWIJDEREN
   const handleDelete = async () => {
       if (!confirm('Weet je zeker dat je dit event wilt verwijderen?')) return
       
-      setLoading(true) // Start cirkeltje
+      setLoading(true) 
       const result = await deleteEvent(id)
       
       if (result.success) {
-          // Als het gelukt is: DIRECT wegwezen hier!
           router.push('/') 
           router.refresh()
       } else {
-          // Mislukt? Stop cirkeltje en toon error
           setLoading(false)
           alert('Kon niet verwijderen: ' + result.error)
       }
@@ -152,6 +153,24 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                 </button>
             </div>
+
+            {/* --- NIEUW: IMAGE PREVIEW --- */}
+            {formData.image_url && (
+                <div className="mb-8 relative h-48 w-full rounded-2xl overflow-hidden border border-white/10 shadow-lg group animate-in fade-in slide-in-from-top-4">
+                    <img 
+                        src={formData.image_url} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover" 
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setFormData({...formData, image_url: ''})}
+                        className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full transition-colors backdrop-blur-sm"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
 
             <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-8" />
 

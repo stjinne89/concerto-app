@@ -124,10 +124,11 @@ export async function createEvent(data: any) {
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
       description: data.description,
+      image_url: data.image_url, // <--- NIEUW: Opslaan van plaatje
       created_by: user.id,
       latitude: lat,
       longitude: lon,
-      group_id: data.group_id // Koppel aan groep (of null voor publiek)
+      group_id: data.group_id 
     })
 
   if (error) {
@@ -185,10 +186,10 @@ export async function updateEvent(eventId: string, data: any) {
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
       description: data.description,
+      image_url: data.image_url, // <--- NIEUW: Updaten van plaatje
   }
 
-  // Alleen lat/lon updaten als we nieuwe hebben gevonden, anders laten we de oude staan
-  // (Of we kunnen zeggen: als venue verandert, overschrijf coords. Voor nu simpel houden)
+  // Alleen lat/lon updaten als we nieuwe hebben gevonden
   if (lat && lon) {
       updateData.latitude = lat
       updateData.longitude = lon
@@ -198,7 +199,7 @@ export async function updateEvent(eventId: string, data: any) {
     .from('events')
     .update(updateData)
     .eq('id', eventId)
-    .eq('created_by', user.id) // Veiligheidscheck: ben jij de maker?
+    .eq('created_by', user.id)
 
   if (error) {
     console.error('Update Error:', error)
@@ -206,8 +207,6 @@ export async function updateEvent(eventId: string, data: any) {
   }
 
   revalidatePath('/')
-  // We sturen niet direct terug met redirect, maar laten de client dat doen of we doen het hier
-  // In dit geval returnen we success, zodat de client kan redirecten
   return { success: true }
 }
 
@@ -222,7 +221,7 @@ export async function deleteEvent(eventId: string) {
     .from('events')
     .delete()
     .eq('id', eventId)
-    .eq('created_by', user.id) // Veiligheidscheck
+    .eq('created_by', user.id)
 
   if (error) {
     console.error('Delete Error:', error)
@@ -244,7 +243,6 @@ export async function joinGroupWithCode(formData: FormData) {
 
   if (!code) return { success: false, error: 'Geen code ingevuld' }
 
-  // Gebruik de veilige RPC functie
   const { data: groupId, error } = await supabase
     .rpc('join_group_by_code', { input_code: code })
 
@@ -267,9 +265,10 @@ export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
 
   try {
+    // We gebruiken nu een 'echte' browser user-agent om te voorkomen dat sites ons blokkeren
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     })
     const html = await response.text()
@@ -277,8 +276,11 @@ export async function scrapeEventUrl(url: string) {
 
     let title = $('meta[property="og:title"]').attr('content') || $('title').text()
     let description = $('meta[property="og:description"]').attr('content')
-    let venue = ''
-    let start_at = ''
+    
+    // NIEUW: Probeer afbeelding te vinden
+    let image = $('meta[property="og:image"]').attr('content') || 
+                $('meta[name="twitter:image"]').attr('content') ||
+                $('link[rel="image_src"]').attr('href');
 
     title = title?.split('|')[0].trim() || ''
 
@@ -286,9 +288,10 @@ export async function scrapeEventUrl(url: string) {
       success: true,
       data: {
         title,
-        venue,
         description,
-        start_at
+        image_url: image, // <--- We sturen de gevonden afbeelding terug
+        venue: '',
+        start_at: ''
       }
     }
 
@@ -346,6 +349,7 @@ export async function updateAvatar(formData: FormData) {
 
   revalidatePath('/profile')
 }
+
 // --- GROEP PROFIEL & MUZIEK ---
 
 export async function updateGroupProfile(groupId: string, formData: FormData) {
@@ -358,7 +362,6 @@ export async function updateGroupProfile(groupId: string, formData: FormData) {
   
   const updates: any = { description }
 
-  // Afbeelding uploaden als die er is
   if (imageFile && imageFile.size > 0) {
       const fileExt = imageFile.name.split('.').pop()
       const fileName = `${groupId}-${Date.now()}.${fileExt}`

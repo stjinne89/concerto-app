@@ -19,7 +19,6 @@ type Track = {
   created_at: string
 }
 
-// LET OP: Hier staat 'export default'. Dit is essentieel!
 export default function GroupHero({ group, musicTracks }: { group: Group, musicTracks: Track[] }) {
   const [isEditing, setIsEditing] = useState(false)
   const [showMusicInput, setShowMusicInput] = useState(false)
@@ -44,7 +43,13 @@ export default function GroupHero({ group, musicTracks }: { group: Group, musicT
         {/* Achtergrond Banner (Wazig) */}
         <div className="absolute inset-0 opacity-20 pointer-events-none">
             {group.image_url ? (
-                <Image src={group.image_url} alt="bg" fill className="object-cover blur-xl scale-110" />
+                <Image 
+                  src={group.image_url} 
+                  alt="bg" 
+                  fill 
+                  sizes="100vw"
+                  className="object-cover blur-xl scale-110" 
+                />
             ) : (
                 <div className="w-full h-full bg-gradient-to-br from-violet-900 via-slate-900 to-slate-900" />
             )}
@@ -56,7 +61,13 @@ export default function GroupHero({ group, musicTracks }: { group: Group, musicT
             <div className="shrink-0 relative">
                 <div className="w-24 h-24 md:w-32 md:h-32 rounded-2xl bg-slate-800 border-4 border-slate-950 shadow-xl overflow-hidden flex items-center justify-center">
                     {group.image_url ? (
-                        <Image src={group.image_url} alt={group.name} fill className="object-cover" />
+                        <Image 
+                          src={group.image_url} 
+                          alt={group.name} 
+                          fill 
+                          sizes="(max-width: 768px) 96px, 128px"
+                          className="object-cover" 
+                        />
                     ) : (
                         <span className="text-4xl">🎸</span>
                     )}

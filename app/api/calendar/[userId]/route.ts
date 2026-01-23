@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js' // Let op: andere import!
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -7,49 +7,61 @@ export async function GET(
 ) {
   const userId = (await params).userId
 
-  // 1. Maak een ADMIN client aan (bypassed RLS beveiliging)
-  // Dit is nodig omdat Google/Outlook geen gebruiker zijn en niet kunnen inloggen.
+  // Check of de keys er wel zijn (voor debugging)
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing!')
+    return new NextResponse('Server Configuration Error', { status: 500 })
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // 2. Haal events op
   const { data: events, error } = await supabase
     .from('events')
-    .select(`
-      *,
-      rsvps!inner (
-        user_id,
-        status
-      )
-    `)
+    .select(`*, rsvps!inner (user_id, status)`)
     .eq('rsvps.user_id', userId)
     .eq('rsvps.status', 'going')
     .order('start_at', { ascending: true })
 
   if (error || !events) {
-    console.error('Calendar Error:', error)
     return new NextResponse('Error fetching events', { status: 500 })
   }
 
-  // 3. Helper functie om tekst veilig te maken voor ICS (voorkomt format errors)
-  const cleanText = (text: string) => {
+  // Helper: Maak tekst veilig voor ICS
+  const escapeText = (text: string) => {
     if (!text) return ''
     return text
-      .replace(/\\/g, '\\\\') // Escape backslashes
-      .replace(/;/g, '\\;')   // Escape puntkomma's
-      .replace(/,/g, '\\,')   // Escape komma's
-      .replace(/\n/g, '\\n')  // Escape nieuwe regels
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\n/g, '\\n')
   }
 
-  // 4. Datum formatter (YYYYMMDDTHHMMSSZ)
+  // Helper: Vouw lange regels (RFC 5545 eis: max 75 bytes per regel)
+  const foldLine = (line: string) => {
+    const MAX_LENGTH = 75
+    if (line.length <= MAX_LENGTH) return line
+    
+    // Splits de regel
+    let result = ''
+    let currentLine = line
+    
+    while (currentLine.length > MAX_LENGTH) {
+      // Neem het eerste stuk
+      result += currentLine.substring(0, MAX_LENGTH) + '\r\n ' // Let op de spatie aan het begin van de volgende regel
+      currentLine = currentLine.substring(MAX_LENGTH)
+    }
+    result += currentLine
+    return result
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toISOString().replace(/-|:|\.\d\d\d/g, "")
   }
 
-  // 5. Bouw de ICS feed
-  let icsContent = [
+  let icsLines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Concerto//Events//NL',
@@ -57,7 +69,7 @@ export async function GET(
     'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
     'X-PUBLISHED-TTL:PT1H',
     'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH' // Belangrijk voor Outlook
+    'METHOD:PUBLISH'
   ]
 
   events.forEach(event => {
@@ -66,25 +78,29 @@ export async function GET(
     const end = formatDate(endDate.toISOString())
     const now = formatDate(new Date().toISOString())
 
-    icsContent.push(
-      'BEGIN:VEVENT',
+    // We bouwen de regels eerst op, en vouwen ze daarna
+    const eventBlock = [
+      `BEGIN:VEVENT`,
       `UID:${event.id}@concerto.app`,
       `DTSTAMP:${now}`,
       `DTSTART:${start}`,
       `DTEND:${end}`,
-      `SUMMARY:${cleanText(`🎵 ${event.title}`)}`,
-      `DESCRIPTION:${cleanText(`Tickets & Info: ${event.ticket_link || 'Zie app'}`)}`,
-      `LOCATION:${cleanText(event.venue_name)}`,
+      `SUMMARY:${escapeText(`🎵 ${event.title}`)}`,
+      `DESCRIPTION:${escapeText(`Tickets & Info: ${event.ticket_link || 'Zie app'}`)}`,
+      `LOCATION:${escapeText(event.venue_name)}`,
       `STATUS:CONFIRMED`,
-      'END:VEVENT'
-    )
+      `END:VEVENT`
+    ]
+
+    icsLines.push(...eventBlock)
   })
 
-  icsContent.push('END:VCALENDAR')
+  icsLines.push('END:VCALENDAR')
 
-  // 6. Stuur terug met de juiste headers
-  // We halen 'attachment' weg zodat Outlook hem als FEED ziet, niet als download
-  return new NextResponse(icsContent.join('\r\n'), {
+  // Pas line-folding toe op ALLE regels
+  const finalContent = icsLines.map(foldLine).join('\r\n')
+
+  return new NextResponse(finalContent, {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
