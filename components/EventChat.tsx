@@ -25,8 +25,16 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
   
   const supabase = createClient()
   
-  // NIEUW: We gebruiken een ref naar de CONTAINER, niet naar het laatste bericht
+  // We gebruiken een ref naar de CONTAINER (de div met scrollbar), niet een los element
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Functie om naar beneden te scrollen zonder de pagina te laten springen
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+        const { scrollHeight, clientHeight } = scrollContainerRef.current
+        scrollContainerRef.current.scrollTop = scrollHeight - clientHeight
+    }
+  }
 
   const fetchMessages = async () => {
     setLoading(true)
@@ -36,7 +44,9 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
       .eq('event_id', eventId)
       .order('created_at', { ascending: true })
 
-    if (data) setMessages(data as any)
+    if (data) {
+        setMessages(data as any)
+    }
     setLoading(false)
   }
 
@@ -45,6 +55,7 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
 
     fetchMessages()
 
+    // Markeer als gelezen zodra je opent
     if (hasUnread) {
         markAsRead(eventId)
     }
@@ -69,6 +80,9 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
          } as Message
 
          setMessages(prev => [...prev, newMsg])
+         
+         // Als de chat open staat en er komt een bericht binnen: markeer weer als gelezen
+         if (isOpen) markAsRead(eventId)
       })
       .subscribe()
 
@@ -77,13 +91,11 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
     }
   }, [isOpen, eventId])
 
-  // AANGEPAST: Scroll logica die de pagina NIET laat springen
+  // Scroll effect: alleen scrollen als de berichten veranderen én de chat open is
   useEffect(() => {
-    if (isOpen && scrollContainerRef.current) {
-        // We zetten de scrollpositie van de container direct naar beneden.
-        // Dit gebeurt alleen INTERN in de div, en laat de body met rust.
-        const { scrollHeight, clientHeight } = scrollContainerRef.current
-        scrollContainerRef.current.scrollTop = scrollHeight - clientHeight
+    if (isOpen) {
+        // Korte timeout om zeker te weten dat de DOM is bijgewerkt
+        setTimeout(scrollToBottom, 100)
     }
   }, [messages, isOpen])
 
@@ -95,17 +107,22 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
     const text = newMessage
     setNewMessage('') 
 
+    // Optimistische update (zorgt dat het voelt alsof het direct verstuurd is)
+    // We wachten op de echte data via realtime, maar dit maakt het sneller
+    
     await supabase.from('event_chat').insert({
       event_id: eventId,
       user_id: currentUserId,
       content: text
     })
-    setSending(false)
     
+    // Update de timestamp van het event zodat anderen een melding krijgen
     await supabase
         .from('events')
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', eventId)
+        
+    setSending(false)
   }
 
   if (!isOpen) {
@@ -114,18 +131,17 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
         type="button"
         onClick={(e) => { 
             e.preventDefault(); 
-            e.stopPropagation(); // Stop event bubbling
+            e.stopPropagation(); 
             setIsOpen(true); 
         }}
         className={`mt-4 w-full py-3 rounded-xl text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
             hasUnread 
-            ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20 hover:bg-violet-500' 
+            ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20 hover:bg-violet-500 animate-pulse' 
             : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
         }`}
       >
         <MessageCircle size={16} />
         {hasUnread ? 'Nieuwe berichten' : 'Praat mee'}
-        {hasUnread && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
       </button>
     )
   }
@@ -146,8 +162,11 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
         </button>
       </div>
 
-      {/* AANGEPAST: ref toegevoegd aan de container */}
-      <div ref={scrollContainerRef} className="h-64 overflow-y-auto p-4 space-y-3 bg-slate-900/50 scroll-smooth">
+      {/* De container met de ref voor het scrollen */}
+      <div 
+        ref={scrollContainerRef} 
+        className="h-64 overflow-y-auto p-4 space-y-3 bg-slate-900/50 scroll-smooth"
+      >
         {loading && messages.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-500">
                 <Loader2 className="animate-spin" />

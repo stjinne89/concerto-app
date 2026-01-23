@@ -6,8 +6,8 @@ import EventChat from '@/components/EventChat'
 import ToggleMap from '@/components/ToggleMap'
 import ScrollToTop from '@/components/ScrollToTop'
 import GroupSwitcher from '@/components/GroupSwitcher'
-import { getEvent, getGroupName, getGroupMusic } from '@/app/actions'
 import GroupHero from '@/components/GroupHero' 
+import NotificationDropdown from '@/components/NotificationDropdown'
 
 // Types definitions
 type Rsvp = {
@@ -78,23 +78,35 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   
   const groups = (myGroups || []) as any[]
 
-  // Group Hero Data
+  // Group Hero Data & Members Logic
   let currentGroup = null
-  let musicTracks: any[] = []
+  let groupMemberIds: string[] = [] // Lijst van alle leden
 
   if (groupId) {
-      const { data } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('id', groupId)
-        .single()
+      // 1. Haal groep info (inclusief spotify_playlist_url)
+      const { data } = await supabase.from('groups').select('*').eq('id', groupId).single()
       currentGroup = data
-      musicTracks = await getGroupMusic(groupId)
+      
+      // 2. NIEUW: Haal alle leden van deze groep op
+      const { data: members } = await supabase
+        .from('group_members')
+        .select('user_id')
+        .eq('group_id', groupId)
+      
+      if (members) {
+          groupMemberIds = members.map((m: any) => m.user_id)
+      }
+      
+      // Zorg dat de maker van de groep er ook altijd bij zit (fallback)
+      if (currentGroup && !groupMemberIds.includes(currentGroup.created_by)) {
+          groupMemberIds.push(currentGroup.created_by)
+      }
   }
 
   const now = new Date().toISOString()
   const threeDaysAgo = new Date(Date.now() - (72 * 60 * 60 * 1000));
 
+  // --- NIEUWE LOGICA: Haal ALTIJD alle events op ---
   let query = supabase
     .from('events')
     .select(`
@@ -103,23 +115,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         status,
         user_id,
         last_read_at, 
-        profiles (
-          full_name,
-          avatar_url
-        )
+        profiles ( full_name, avatar_url )
       ),
       rsvp_reactions (*)
     `)
 
-  // Filter Logica
-  if (view === 'mine') {
-    // Client-side filter later
-  } else if (groupId) {
-    query = query.eq('group_id', groupId)
-  } else {
-    query = query.is('group_id', null)
-  }
-
+  // Tijd filters
   if (view === 'history') {
     query = query.lt('start_at', now).order('start_at', { ascending: false })
   } else {
@@ -129,8 +130,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: rawEvents } = await query
   let events = rawEvents || []
 
-  // Filteren voor 'Mijn Agenda'
-  if (view === 'mine') {
+  // --- FILTEREN IN JAVASCRIPT ---
+
+  if (groupId) {
+      // GROEP WEERGAVE
+      events = events.filter(event => {
+          const isCreatorMember = groupMemberIds.includes(event.created_by)
+          const hasMemberRsvp = event.rsvps?.some((r: Rsvp) => 
+              groupMemberIds.includes(r.user_id) && r.status !== 'cant'
+          )
+          return isCreatorMember || hasMemberRsvp
+      })
+  } else if (view === 'mine') {
+      // MIJN AGENDA
       events = events.filter(event => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id)
           return myRsvp?.status && myRsvp.status !== 'cant'
@@ -147,36 +159,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     return rsvp?.status
   }
 
-  let unreadChatCount = 0;
-  let newEventCount = 0;
-  
-  if (rawEvents) {
-      rawEvents.forEach((event) => {
-          const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);
-          const lastRead = myRsvp?.last_read_at ? new Date(myRsvp.last_read_at) : new Date(0);
-          const lastMessage = event.last_message_at ? new Date(event.last_message_at) : null;
-          
-          let hasUnreadChat = lastMessage ? lastMessage > lastRead : false;
-
-          if (!hasUnreadChat) {
-             const myReactions = event.rsvp_reactions?.filter((r: Reaction) => r.target_user_id === user.id) || [];
-             hasUnreadChat = myReactions.some((r: Reaction) => new Date(r.created_at) > lastRead && r.actor_user_id !== user.id);
-          }
-
-          const createdAt = new Date(event.created_at);
-          const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
-
-          if (hasUnreadChat) {
-              unreadChatCount++;
-          } else if (isNewEvent) {
-              newEventCount++;
-          }
-      });
-  }
-
-  const totalBadgeCount = unreadChatCount + newEventCount;
-  const badgeColor = unreadChatCount > 0 ? 'bg-red-500' : 'bg-emerald-500';
-
   return (
     <main className="min-h-screen bg-slate-950 text-slate-200 pb-24">
       <ScrollToTop />
@@ -186,25 +168,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           Concerto
         </h1>
         
-        <Link href="/profile" className="relative flex items-center gap-3 pl-4 py-1 pr-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all group">
-            {totalBadgeCount > 0 && (
-                <div className={`absolute -top-1 -right-1 ${badgeColor} text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-lg z-10 animate-pulse`}>
-                    {totalBadgeCount}
-                </div>
-            )}
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-white transition-colors hidden sm:block">
-                {profile?.full_name?.split(' ')[0] || 'Profiel'}
-            </span>
-            <div className="w-8 h-8 rounded-full bg-slate-800 overflow-hidden border border-white/10 group-hover:border-violet-500/50 transition-colors">
-                {profile?.avatar_url ? (
-                    <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-500">
-                        {profile?.full_name?.charAt(0) || user.email?.charAt(0)}
-                    </div>
-                )}
-            </div>
-        </Link>
+        <NotificationDropdown 
+            profile={profile} 
+            events={events}
+            currentUserId={user.id} 
+        />
       </nav>
 
       <div className="max-w-7xl mx-auto p-4 pt-24">
@@ -212,7 +180,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         <div className="max-w-2xl mx-auto">
             <GroupSwitcher groups={groups} />
             {currentGroup && (
-                <GroupHero group={currentGroup} musicTracks={musicTracks} />
+                <GroupHero 
+                    group={currentGroup} 
+                    currentUserId={user.id} // <--- DEZE PROP IS CRUCIAAL VOOR HET POTLOODJE
+                />
             )}
             {view !== 'history' && events && events.length > 0 && <ToggleMap events={events} />}
         </div>
@@ -282,7 +253,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
 
               return (
                 <div 
-                  key={event.id} 
+                  key={event.id}
+                  id={`event-${event.id}`}
                   className={`relative border rounded-[2rem] group overflow-hidden transition-all flex flex-col ${
                     view === 'history' 
                       ? 'bg-slate-900/30 opacity-75 hover:opacity-100 border-white/5' 
@@ -290,10 +262,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                   }`}
                 >
                   
-                  {/* --- NIEUW: HET PLAATJE --- */}
                   {event.image_url ? (
                       <div className="h-40 w-full relative overflow-hidden bg-slate-800">
-                          {/* Gradiënt voor leesbaarheid */}
                           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 opacity-90" />
                           <img 
                               src={event.image_url} 
@@ -301,7 +271,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                           />
                           
-                          {/* Badges over de foto heen */}
                           <div className="absolute top-4 left-4 z-20 flex gap-2">
                                <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border backdrop-blur-md shadow-lg ${view === 'history' ? 'text-slate-400 border-slate-600 bg-slate-900/80' : typeStyle}`}>
                                 {event.event_type}
@@ -314,7 +283,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                           </div>
                       </div>
                   ) : (
-                      /* Geen foto? Dan alleen wat ruimte bovenin */
                       <div className="pt-6 px-6 flex justify-between items-start">
                            <div className="flex gap-2">
                               <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : typeStyle}`}>

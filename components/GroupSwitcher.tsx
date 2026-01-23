@@ -62,7 +62,7 @@ export default function GroupSwitcher({ groups }: { groups: Group[] }) {
                     Je zit nu in
                 </span>
                 <span className="block text-lg font-bold text-white">
-                    {currentGroup ? currentGroup.name : 'De Concerto Community'}
+                    {currentGroup ? currentGroup.name : 'de Concerto Agenda'}
                 </span>
             </div>
         </div>

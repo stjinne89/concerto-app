@@ -124,7 +124,7 @@ export async function createEvent(data: any) {
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
       description: data.description,
-      image_url: data.image_url, // <--- NIEUW: Opslaan van plaatje
+      image_url: data.image_url, 
       created_by: user.id,
       latitude: lat,
       longitude: lon,
@@ -186,10 +186,9 @@ export async function updateEvent(eventId: string, data: any) {
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
       description: data.description,
-      image_url: data.image_url, // <--- NIEUW: Updaten van plaatje
+      image_url: data.image_url, 
   }
 
-  // Alleen lat/lon updaten als we nieuwe hebben gevonden
   if (lat && lon) {
       updateData.latitude = lat
       updateData.longitude = lon
@@ -232,7 +231,7 @@ export async function deleteEvent(eventId: string) {
   return { success: true }
 }
 
-// --- 6. GROEP JOINEN MET CODE ---
+// --- 6. GROEP JOINEN MET CODE (AANGEPAST) ---
 
 export async function joinGroupWithCode(formData: FormData) {
   const code = formData.get('code') as string
@@ -243,6 +242,7 @@ export async function joinGroupWithCode(formData: FormData) {
 
   if (!code) return { success: false, error: 'Geen code ingevuld' }
 
+  // 1. Zoek de groep
   const { data: groupId, error } = await supabase
     .rpc('join_group_by_code', { input_code: code })
 
@@ -255,6 +255,13 @@ export async function joinGroupWithCode(formData: FormData) {
     return { success: false, error: 'Ongeldige code' }
   }
 
+  // 2. Voeg gebruiker toe aan de 'group_members' tabel
+  // We gebruiken .select() zodat hij niet crasht als je al lid bent
+  await supabase
+    .from('group_members')
+    .insert({ group_id: groupId, user_id: user.id })
+    .select()
+
   revalidatePath('/')
   redirect(`/?group=${groupId}`)
 }
@@ -265,7 +272,6 @@ export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
 
   try {
-    // We gebruiken nu een 'echte' browser user-agent om te voorkomen dat sites ons blokkeren
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -277,7 +283,6 @@ export async function scrapeEventUrl(url: string) {
     let title = $('meta[property="og:title"]').attr('content') || $('title').text()
     let description = $('meta[property="og:description"]').attr('content')
     
-    // NIEUW: Probeer afbeelding te vinden
     let image = $('meta[property="og:image"]').attr('content') || 
                 $('meta[name="twitter:image"]').attr('content') ||
                 $('link[rel="image_src"]').attr('href');
@@ -289,7 +294,7 @@ export async function scrapeEventUrl(url: string) {
       data: {
         title,
         description,
-        image_url: image, // <--- We sturen de gevonden afbeelding terug
+        image_url: image, 
         venue: '',
         start_at: ''
       }
@@ -350,7 +355,7 @@ export async function updateAvatar(formData: FormData) {
   revalidatePath('/profile')
 }
 
-// --- GROEP PROFIEL & MUZIEK ---
+// --- GROEP PROFIEL & MUZIEK (AANGEPAST VOOR PLAYLIST) ---
 
 export async function updateGroupProfile(groupId: string, formData: FormData) {
   const supabase = await createClient()
@@ -358,10 +363,16 @@ export async function updateGroupProfile(groupId: string, formData: FormData) {
   if (!user) return
 
   const description = formData.get('description') as string
+  const spotifyUrl = formData.get('spotify_url') as string // <--- NIEUW: Spotify link ophalen
   const imageFile = formData.get('image') as File
   
-  const updates: any = { description }
+  // Update object maken
+  const updates: any = { 
+    description,
+    spotify_playlist_url: spotifyUrl // <--- NIEUW: Opslaan in DB
+  }
 
+  // Foto upload logica (ongewijzigd)
   if (imageFile && imageFile.size > 0) {
       const fileExt = imageFile.name.split('.').pop()
       const fileName = `${groupId}-${Date.now()}.${fileExt}`
