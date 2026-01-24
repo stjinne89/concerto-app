@@ -3,7 +3,7 @@
 import { updateEvent, getEvent, deleteEvent, scrapeEventUrl } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation' 
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X, MessageCircle } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X, MessageCircle, Lock, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
@@ -14,6 +14,9 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
   const [fetching, setFetching] = useState(true)
   const [scrapeUrl, setScrapeUrl] = useState('')
   
+  // We moeten weten of dit event bij een groep hoort
+  const [isGroupEvent, setIsGroupEvent] = useState(false)
+
   const [formData, setFormData] = useState({
     title: '',
     venue: '',
@@ -33,6 +36,9 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     async function loadData() {
         const data = await getEvent(id)
         if (data) {
+            // Check of er een group_id is
+            setIsGroupEvent(!!data.group_id)
+
             setFormData({
                 title: data.title || '',
                 venue: data.venue_name || '',
@@ -199,7 +205,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                         <input 
                             name="start_at" type="datetime-local" required 
                             value={formData.start_at}
-                            onChange={handleStartChange} // <--- HIER DE FIX
+                            onChange={handleStartChange}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
                         />
                     </div>
@@ -268,16 +274,45 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                     </div>
 
                     <div className="relative group">
-                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                            <MessageCircle size={16} className="text-slate-500 group-focus-within:text-green-400 transition-colors" />
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                            <RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" />
                         </div>
                         <input 
-                            name="chat_link" type="url" placeholder="WhatsApp / Groep Link" 
-                            value={formData.chat_link}
-                            onChange={e => setFormData({...formData, chat_link: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500/50 transition-all"
+                            name="resale_link" type="url" placeholder="Extra Resale" 
+                            value={formData.resale_link}
+                            onChange={e => setFormData({...formData, resale_link: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
                         />
                     </div>
+
+                    {/* --- VEILIGE WHATSAPP LINK MET WAARSCHUWING --- */}
+                     <div>
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                <MessageCircle size={16} className={`group-focus-within:text-green-400 transition-colors ${isGroupEvent ? 'text-green-500' : 'text-amber-500'}`} />
+                            </div>
+                            <input 
+                                name="chat_link" type="url" 
+                                placeholder={isGroupEvent ? "Link naar WhatsApp groep" : "Gebruik dit alleen voor OPENBARE groepen!"}
+                                value={formData.chat_link}
+                                onChange={e => setFormData({...formData, chat_link: e.target.value})}
+                                className={`w-full bg-white/5 border rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 transition-all ${isGroupEvent ? 'border-green-500/30 focus:border-green-500 focus:ring-green-500/50' : 'border-amber-500/30 focus:border-amber-500 focus:ring-amber-500/50'}`}
+                            />
+                        </div>
+                        <div className="mt-2 ml-1 flex items-start gap-2 text-[10px] uppercase font-bold tracking-wide leading-tight">
+                            {isGroupEvent ? (
+                                <>
+                                    <Lock size={12} className="text-green-500 shrink-0" />
+                                    <span className="text-green-400">Veilig: Alleen zichtbaar voor leden van je groep.</span>
+                                </>
+                            ) : (
+                                <>
+                                    <AlertTriangle size={12} className="text-amber-500 shrink-0" />
+                                    <span className="text-amber-500">Let op: Dit event is openbaar. Iedereen kan deze link zien.</span>
+                                </>
+                            )}
+                        </div>
+                     </div>
                 </div>
 
                 <div className="pt-4">

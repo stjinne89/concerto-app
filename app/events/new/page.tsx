@@ -3,7 +3,7 @@
 import { createEvent, scrapeEventUrl, getGroupName } from '@/app/actions'
 import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, X, MessageCircle } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, X, MessageCircle, Lock, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 function NewEventForm() {
@@ -14,6 +14,7 @@ function NewEventForm() {
   const [scrapeUrl, setScrapeUrl] = useState('')
   const [groupName, setGroupName] = useState<string | null>(null)
   
+  // Haal de groepsnaam op
   useEffect(() => {
     if (groupId) {
         getGroupName(groupId).then(name => setGroupName(name))
@@ -39,14 +40,10 @@ function NewEventForm() {
     const newStart = e.target.value
     let newEnd = formData.end_at
 
-    // Als er nog geen eindtijd is, OF de eindtijd staat vroeger dan de nieuwe starttijd:
-    // Zet de eindtijd automatisch op Starttijd + 3 uur
     if (newStart && (!newEnd || newEnd < newStart)) {
         const date = new Date(newStart)
         date.setHours(date.getHours() + 3)
         
-        // Trucje om lokale tijd te behouden in ISO formaat (YYYY-MM-DDTHH:mm)
-        // Anders pakt toISOString() de UTC tijd (-1 of -2 uur)
         newEnd = new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
             .toISOString()
             .slice(0, 16)
@@ -176,7 +173,7 @@ function NewEventForm() {
                             type="datetime-local" 
                             required 
                             value={formData.start_at}
-                            onChange={handleStartChange} // <--- HIER ROEPEN WE DE NIEUWE FUNCTIE AAN
+                            onChange={handleStartChange}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
                         />
                     </div>
@@ -186,7 +183,7 @@ function NewEventForm() {
                             name="end_at" 
                             type="datetime-local" 
                             value={formData.end_at}
-                            min={formData.start_at} // Zorgt dat je niet in het verleden kan eindigen
+                            min={formData.start_at} 
                             onChange={e => setFormData({...formData, end_at: e.target.value})}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
                         />
@@ -257,17 +254,36 @@ function NewEventForm() {
                         />
                     </div>
 
-                     <div className="relative group">
-                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                            <MessageCircle size={16} className="text-slate-500 group-focus-within:text-green-400 transition-colors" />
+                     {/* --- VEILIGE WHATSAPP LINK MET WAARSCHUWING --- */}
+                     <div>
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                <MessageCircle size={16} className={`group-focus-within:text-green-400 transition-colors ${groupId ? 'text-green-500' : 'text-amber-500'}`} />
+                            </div>
+                            <input 
+                                name="chat_link" type="url" 
+                                // Aangepaste placeholder tekst
+                                placeholder={groupId ? "Link naar WhatsApp groep" : "Gebruik dit alleen voor OPENBARE groepen!"}
+                                value={formData.chat_link}
+                                onChange={e => setFormData({...formData, chat_link: e.target.value})}
+                                className={`w-full bg-white/5 border rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 transition-all ${groupId ? 'border-green-500/30 focus:border-green-500 focus:ring-green-500/50' : 'border-amber-500/30 focus:border-amber-500 focus:ring-amber-500/50'}`}
+                            />
                         </div>
-                        <input 
-                            name="chat_link" type="url" placeholder="WhatsApp / Groep Link" 
-                            value={formData.chat_link}
-                            onChange={e => setFormData({...formData, chat_link: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500/50 transition-all"
-                        />
-                    </div>
+                        {/* WAARSCHUWING TEKST */}
+                        <div className="mt-2 ml-1 flex items-start gap-2 text-[10px] uppercase font-bold tracking-wide leading-tight">
+                            {groupId ? (
+                                <>
+                                    <Lock size={12} className="text-green-500 shrink-0" />
+                                    <span className="text-green-400">Veilig: Alleen zichtbaar voor leden van <span className="text-white">{groupName || 'je groep'}</span>.</span>
+                                </>
+                            ) : (
+                                <>
+                                    <AlertTriangle size={12} className="text-amber-500 shrink-0" />
+                                    <span className="text-amber-500">Let op: Dit event is openbaar. Iedereen kan deze link zien.</span>
+                                </>
+                            )}
+                        </div>
+                     </div>
                 </div>
 
                 <div className="pt-4 flex flex-col gap-4">
