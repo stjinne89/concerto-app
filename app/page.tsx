@@ -8,7 +8,7 @@ import ScrollToTop from '@/components/ScrollToTop'
 import GroupSwitcher from '@/components/GroupSwitcher'
 import GroupHero from '@/components/GroupHero' 
 import NotificationDropdown from '@/components/NotificationDropdown'
-import { MessageCircle } from 'lucide-react' // <--- Icoontje voor de knop
+import { MessageCircle } from 'lucide-react'
 
 // Types definitions
 type Rsvp = {
@@ -95,7 +95,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     .eq('id', user.id)
     .single()
 
-  // 1. Groepen ophalen (Voor de switcher)
+  // 1. Groepen ophalen
   const { data: myGroups } = await supabase
     .from('groups')
     .select('id, name, invite_code, image_url') 
@@ -103,13 +103,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   
   const groups = (myGroups || []) as any[]
 
-  // 2. NIEUW: Checken van welke groepen jij LID bent (voor de beveiliging)
+  // 2. Checken van welke groepen jij LID bent
   const { data: memberships } = await supabase
     .from('group_members')
     .select('group_id')
     .eq('user_id', user.id)
   
-  // Maak een lijstje van ID's waar jij toegang tot hebt
   const myMemberGroupIds = memberships?.map((m: any) => m.group_id) || []
 
   // Group Hero Data & Members Logic
@@ -273,14 +272,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const createdAt = new Date(event.created_at).getTime();
               const isNewEvent = createdAt > threeDaysAgoTimestamp && !myRsvp?.status;
 
-              const mapsUrl = `http://googleusercontent.com/maps.google.com/10{encodeURIComponent(event.venue_name)}`;
+              // --- FIX: DEZE URL IS NU STANDAARD & VEILIG ---
+              const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.venue_name)}`;
               const mapsLabel = event.venue_name; 
 
               const typeStyle = getEventTypeStyles(event.event_type || '')
               const cardStyle = getCardStyles(event.event_type || '')
 
-              // --- SECURITY CHECK VOOR APP LINK ---
-              // Alleen tonen als je lid bent van de groep (of als het een openbaar event is)
+              // Security Check voor App Link
               const showChatLink = event.group_chat_link && (!event.group_id || myMemberGroupIds.includes(event.group_id));
 
               return (
@@ -402,7 +401,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                                   </a>
                               )}
                               
-                              {/* --- HIER WORDT DE VEILIGE LINK GETOOND --- */}
                               {showChatLink && (
                                   <a href={event.group_chat_link} target="_blank" rel="noopener noreferrer" 
                                      className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-green-500/10 text-green-300 border border-green-500/20 hover:bg-green-500/20 transition-colors flex items-center gap-1">

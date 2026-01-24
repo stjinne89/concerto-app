@@ -3,7 +3,7 @@
 import { updateEvent, getEvent, deleteEvent, scrapeEventUrl } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation' 
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X, MessageCircle, Lock, AlertTriangle } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X, MessageCircle, Lock, AlertTriangle, RefreshCcw } from 'lucide-react'
 import Link from 'next/link'
 
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
@@ -36,8 +36,12 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     async function loadData() {
         const data = await getEvent(id)
         if (data) {
-            // Check of er een group_id is
             setIsGroupEvent(!!data.group_id)
+
+            // Vul de scrape URL alvast in als er een ticketlink is
+            if (data.ticket_link) {
+                setScrapeUrl(data.ticket_link)
+            }
 
             setFormData({
                 title: data.title || '',
@@ -75,7 +79,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     setFormData(prev => ({ ...prev, start_at: newStart, end_at: newEnd }))
   }
 
-  // 2. Scrape functie
+  // 2. Scrape functie (Vernieuwd)
   const handleAutoFill = async () => {
     if (!scrapeUrl) return
     setLoading(true)
@@ -83,12 +87,13 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     if (result.success && result.data) {
       setFormData(prev => ({
         ...prev,
+        // We updaten alleen als er nieuwe data is gevonden, anders houden we wat we hadden
         title: result.data.title || prev.title,
         venue: result.data.venue || prev.venue,
         description: result.data.description || prev.description,
         start_at: result.data.start_at || prev.start_at,
         image_url: result.data.image_url || prev.image_url,
-        ticket_link: scrapeUrl
+        ticket_link: scrapeUrl // Zorg dat de link ook in het ticketveld komt
       }))
     }
     setLoading(false)
@@ -151,6 +156,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
 
             <h1 className="text-2xl font-black text-white tracking-tight mb-8 text-center">Event Bewerken</h1>
             
+            {/* DE VERNIEUWDE UPDATE BALK */}
             <div className="mb-8 relative">
                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                     <Link2 size={16} className="text-slate-500" />
@@ -166,9 +172,10 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                     onClick={handleAutoFill}
                     disabled={loading || !scrapeUrl}
                     type="button"
+                    title="Gegevens verversen van link"
                     className="absolute right-2 top-2 bottom-2 aspect-square bg-violet-600 hover:bg-violet-500 text-white rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
                 >
-                    {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                    {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCcw size={18} />}
                 </button>
             </div>
 
@@ -285,7 +292,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                         />
                     </div>
 
-                    {/* --- VEILIGE WHATSAPP LINK MET WAARSCHUWING --- */}
+                     {/* --- VEILIGE WHATSAPP LINK --- */}
                      <div>
                         <div className="relative group">
                             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
