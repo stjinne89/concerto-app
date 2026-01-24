@@ -3,7 +3,7 @@
 import { createEvent, scrapeEventUrl, getGroupName } from '@/app/actions'
 import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, X } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, X, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 
 function NewEventForm() {
@@ -14,7 +14,6 @@ function NewEventForm() {
   const [scrapeUrl, setScrapeUrl] = useState('')
   const [groupName, setGroupName] = useState<string | null>(null)
   
-  // Haal de groepsnaam op
   useEffect(() => {
     if (groupId) {
         getGroupName(groupId).then(name => setGroupName(name))
@@ -26,12 +25,35 @@ function NewEventForm() {
     venue: '',
     description: '',
     start_at: '',
+    end_at: '',
     type: 'Concert',
     ticket_link: '',
     ticketswap_link: '',
     resale_link: '',
-    image_url: '' // <--- NIEUW: Hier slaan we de link naar het plaatje op
+    chat_link: '',
+    image_url: '' 
   })
+
+  // --- SLIMME DATUM FUNCTIE ---
+  const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStart = e.target.value
+    let newEnd = formData.end_at
+
+    // Als er nog geen eindtijd is, OF de eindtijd staat vroeger dan de nieuwe starttijd:
+    // Zet de eindtijd automatisch op Starttijd + 3 uur
+    if (newStart && (!newEnd || newEnd < newStart)) {
+        const date = new Date(newStart)
+        date.setHours(date.getHours() + 3)
+        
+        // Trucje om lokale tijd te behouden in ISO formaat (YYYY-MM-DDTHH:mm)
+        // Anders pakt toISOString() de UTC tijd (-1 of -2 uur)
+        newEnd = new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
+            .toISOString()
+            .slice(0, 16)
+    }
+
+    setFormData(prev => ({ ...prev, start_at: newStart, end_at: newEnd }))
+  }
 
   const handleAutoFill = async () => {
     if (!scrapeUrl) return
@@ -47,7 +69,7 @@ function NewEventForm() {
           venue: result.data.venue || prev.venue,
           description: result.data.description || prev.description,
           start_at: result.data.start_at || prev.start_at,
-          image_url: result.data.image_url || prev.image_url, // <--- NIEUW: Plaatje invullen
+          image_url: result.data.image_url || prev.image_url,
           ticket_link: scrapeUrl
         }))
       }
@@ -115,7 +137,6 @@ function NewEventForm() {
                 </button>
             </div>
 
-            {/* --- NIEUW: IMAGE PREVIEW --- */}
             {formData.image_url && (
                 <div className="mb-8 relative h-48 w-full rounded-2xl overflow-hidden border border-white/10 shadow-lg group animate-in fade-in slide-in-from-top-4">
                     <img 
@@ -123,7 +144,6 @@ function NewEventForm() {
                         alt="Preview" 
                         className="w-full h-full object-cover" 
                     />
-                    {/* Knop om plaatje te verwijderen */}
                     <button
                         type="button"
                         onClick={() => setFormData({...formData, image_url: ''})}
@@ -150,30 +170,44 @@ function NewEventForm() {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Wanneer?</label>
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Start</label>
                         <input 
-                            name="start_at" type="datetime-local" required 
+                            name="start_at" 
+                            type="datetime-local" 
+                            required 
                             value={formData.start_at}
-                            onChange={e => setFormData({...formData, start_at: e.target.value})}
+                            onChange={handleStartChange} // <--- HIER ROEPEN WE DE NIEUWE FUNCTIE AAN
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Type</label>
-                        <select 
-                            name="type" 
-                            value={formData.type}
-                            onChange={e => setFormData({...formData, type: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none"
-                        >
-                            <option value="Concert" className="bg-slate-900">Concert</option>
-                            <option value="Festival" className="bg-slate-900">Festival</option>
-                            <option value="Club" className="bg-slate-900">Club / Nacht</option>
-                            <option value="Theater" className="bg-slate-900">Theater</option>
-                            <option value="Sport" className="bg-slate-900">Sport</option>
-                            <option value="Overig" className="bg-slate-900">Overig</option>
-                        </select>
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">Einde <span className="opacity-50">(Optioneel)</span></label>
+                        <input 
+                            name="end_at" 
+                            type="datetime-local" 
+                            value={formData.end_at}
+                            min={formData.start_at} // Zorgt dat je niet in het verleden kan eindigen
+                            onChange={e => setFormData({...formData, end_at: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
+                        />
                     </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Type</label>
+                    <select 
+                        name="type" 
+                        value={formData.type}
+                        onChange={e => setFormData({...formData, type: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none"
+                    >
+                        <option value="Concert" className="bg-slate-900">Concert</option>
+                        <option value="Festival" className="bg-slate-900">Festival</option>
+                        <option value="Club / Nacht" className="bg-slate-900">Club / Nacht</option>
+                        <option value="Theater" className="bg-slate-900">Theater</option>
+                        <option value="Sport" className="bg-slate-900">Sport</option>
+                        <option value="Overig" className="bg-slate-900">Overig</option>
+                    </select>
                 </div>
 
                 <div className="space-y-2">
@@ -222,6 +256,18 @@ function NewEventForm() {
                             className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
                         />
                     </div>
+
+                     <div className="relative group">
+                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                            <MessageCircle size={16} className="text-slate-500 group-focus-within:text-green-400 transition-colors" />
+                        </div>
+                        <input 
+                            name="chat_link" type="url" placeholder="WhatsApp / Groep Link" 
+                            value={formData.chat_link}
+                            onChange={e => setFormData({...formData, chat_link: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500/50 transition-all"
+                        />
+                    </div>
                 </div>
 
                 <div className="pt-4 flex flex-col gap-4">
@@ -230,7 +276,7 @@ function NewEventForm() {
                         disabled={loading}
                         className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] transition-all shadow-lg shadow-violet-900/20 active:scale-[0.98] disabled:opacity-50"
                     >
-                        {loading ? 'Bezig...' : 'Event Aanmaken'}
+                        {loading ? <Loader2 className="animate-spin" /> : 'Event Aanmaken'}
                     </button>
                     <Link href="/" className="text-center text-xs font-bold uppercase tracking-widest text-slate-600 hover:text-slate-400 transition-colors">
                         Annuleren

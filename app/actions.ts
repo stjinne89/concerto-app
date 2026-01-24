@@ -119,10 +119,12 @@ export async function createEvent(data: any) {
       title: data.title,
       venue_name: data.venue,
       start_at: data.start_at,
+      end_at: data.end_at, // <--- NIEUW: Eindtijd
       event_type: data.type,
       ticket_link: data.ticket_link,
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
+      group_chat_link: data.chat_link, // <--- NIEUW: App Link
       description: data.description,
       image_url: data.image_url, 
       created_by: user.id,
@@ -159,6 +161,7 @@ export async function getEvent(id: string) {
 }
 
 // --- 4. EVENTS: UPDATE (Bewerken) ---
+// Deze miste je net!
 
 export async function updateEvent(eventId: string, data: any) {
   const supabase = await createClient()
@@ -181,10 +184,12 @@ export async function updateEvent(eventId: string, data: any) {
       title: data.title,
       venue_name: data.venue,
       start_at: data.start_at,
+      end_at: data.end_at, // <--- NIEUW
       event_type: data.type,
       ticket_link: data.ticket_link,
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
+      group_chat_link: data.chat_link, // <--- NIEUW
       description: data.description,
       image_url: data.image_url, 
   }
@@ -363,16 +368,14 @@ export async function updateGroupProfile(groupId: string, formData: FormData) {
   if (!user) return
 
   const description = formData.get('description') as string
-  const spotifyUrl = formData.get('spotify_url') as string // <--- NIEUW: Spotify link ophalen
+  const spotifyUrl = formData.get('spotify_url') as string
   const imageFile = formData.get('image') as File
   
-  // Update object maken
   const updates: any = { 
     description,
-    spotify_playlist_url: spotifyUrl // <--- NIEUW: Opslaan in DB
+    spotify_playlist_url: spotifyUrl
   }
 
-  // Foto upload logica (ongewijzigd)
   if (imageFile && imageFile.size > 0) {
       const fileExt = imageFile.name.split('.').pop()
       const fileName = `${groupId}-${Date.now()}.${fileExt}`

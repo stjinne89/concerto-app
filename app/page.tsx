@@ -8,6 +8,7 @@ import ScrollToTop from '@/components/ScrollToTop'
 import GroupSwitcher from '@/components/GroupSwitcher'
 import GroupHero from '@/components/GroupHero' 
 import NotificationDropdown from '@/components/NotificationDropdown'
+import { MessageCircle } from 'lucide-react' // <--- Icoontje voor de knop
 
 // Types definitions
 type Rsvp = {
@@ -45,13 +46,37 @@ function formatDateTimeParts(dateString: string) {
   return { dayString, time, dayNum, cleanMonth, cleanWeekday }
 }
 
+// STIJLEN VOOR DE LABELS (BADGES)
 function getEventTypeStyles(type: string) {
   const t = type.toLowerCase()
   if (t.includes('festival')) return 'bg-amber-500/10 text-amber-300 border-amber-500/20'
-  if (t.includes('club') || t.includes('nacht') || t.includes('party')) return 'bg-rose-500/10 text-rose-300 border-rose-500/20'
+  if (t.includes('club') || t.includes('nacht') || t.includes('party')) return 'bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/20' 
   if (t.includes('theater') || t.includes('comedy') || t.includes('cabaret')) return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
   if (t.includes('sport')) return 'bg-blue-500/10 text-blue-300 border-blue-500/20'
+  if (t.includes('overig')) return 'bg-slate-700/30 text-slate-300 border-slate-600/30'
   return 'bg-violet-500/10 text-violet-300 border-violet-500/20'
+}
+
+// STIJLEN VOOR DE HELE KAART (RAND & GLOED)
+function getCardStyles(type: string) {
+    const t = type.toLowerCase()
+    
+    if (t.includes('festival')) {
+        return 'border-amber-500/20 hover:border-amber-500/50 shadow-[0_0_30px_-10px_rgba(245,158,11,0.1)] hover:shadow-[0_0_40px_-5px_rgba(245,158,11,0.2)]'
+    }
+    if (t.includes('club') || t.includes('nacht') || t.includes('party')) {
+        return 'border-fuchsia-500/20 hover:border-fuchsia-500/50 shadow-[0_0_30px_-10px_rgba(217,70,239,0.1)] hover:shadow-[0_0_40px_-5px_rgba(217,70,239,0.2)]'
+    }
+    if (t.includes('theater') || t.includes('comedy') || t.includes('cabaret')) {
+        return 'border-emerald-500/20 hover:border-emerald-500/50 shadow-[0_0_30px_-10px_rgba(16,185,129,0.1)] hover:shadow-[0_0_40px_-5px_rgba(16,185,129,0.2)]'
+    }
+    if (t.includes('sport')) {
+        return 'border-blue-500/20 hover:border-blue-500/50 shadow-[0_0_30px_-10px_rgba(59,130,246,0.1)] hover:shadow-[0_0_40px_-5px_rgba(59,130,246,0.2)]'
+    }
+    if (t.includes('overig')) {
+        return 'border-white/5 hover:border-white/20 shadow-none'
+    }
+    return 'border-violet-500/20 hover:border-violet-500/50 shadow-[0_0_30px_-10px_rgba(139,92,246,0.1)] hover:shadow-[0_0_40px_-5px_rgba(139,92,246,0.2)]'
 }
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string, group?: string }> }) {
@@ -70,24 +95,31 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
     .eq('id', user.id)
     .single()
 
-  // 1. Groepen ophalen
+  // 1. Groepen ophalen (Voor de switcher)
   const { data: myGroups } = await supabase
     .from('groups')
-    .select('id, name, invite_code')
+    .select('id, name, invite_code, image_url') 
     .order('created_at', { ascending: false })
   
   const groups = (myGroups || []) as any[]
 
+  // 2. NIEUW: Checken van welke groepen jij LID bent (voor de beveiliging)
+  const { data: memberships } = await supabase
+    .from('group_members')
+    .select('group_id')
+    .eq('user_id', user.id)
+  
+  // Maak een lijstje van ID's waar jij toegang tot hebt
+  const myMemberGroupIds = memberships?.map((m: any) => m.group_id) || []
+
   // Group Hero Data & Members Logic
   let currentGroup = null
-  let groupMemberIds: string[] = [] // Lijst van alle leden
+  let groupMemberIds: string[] = [] 
 
   if (groupId) {
-      // 1. Haal groep info (inclusief spotify_playlist_url)
       const { data } = await supabase.from('groups').select('*').eq('id', groupId).single()
       currentGroup = data
       
-      // 2. NIEUW: Haal alle leden van deze groep op
       const { data: members } = await supabase
         .from('group_members')
         .select('user_id')
@@ -96,17 +128,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       if (members) {
           groupMemberIds = members.map((m: any) => m.user_id)
       }
-      
-      // Zorg dat de maker van de groep er ook altijd bij zit (fallback)
       if (currentGroup && !groupMemberIds.includes(currentGroup.created_by)) {
           groupMemberIds.push(currentGroup.created_by)
       }
   }
 
   const now = new Date().toISOString()
-  const threeDaysAgo = new Date(Date.now() - (72 * 60 * 60 * 1000));
+  
+  const threeDaysAgoDate = new Date();
+  threeDaysAgoDate.setDate(threeDaysAgoDate.getDate() - 3);
+  const threeDaysAgoTimestamp = threeDaysAgoDate.getTime();
 
-  // --- NIEUWE LOGICA: Haal ALTIJD alle events op ---
   let query = supabase
     .from('events')
     .select(`
@@ -120,7 +152,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
       rsvp_reactions (*)
     `)
 
-  // Tijd filters
   if (view === 'history') {
     query = query.lt('start_at', now).order('start_at', { ascending: false })
   } else {
@@ -130,10 +161,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: rawEvents } = await query
   let events = rawEvents || []
 
-  // --- FILTEREN IN JAVASCRIPT ---
-
   if (groupId) {
-      // GROEP WEERGAVE
       events = events.filter(event => {
           const isCreatorMember = groupMemberIds.includes(event.created_by)
           const hasMemberRsvp = event.rsvps?.some((r: Rsvp) => 
@@ -142,7 +170,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           return isCreatorMember || hasMemberRsvp
       })
   } else if (view === 'mine') {
-      // MIJN AGENDA
       events = events.filter(event => {
           const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id)
           return myRsvp?.status && myRsvp.status !== 'cant'
@@ -182,7 +209,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
             {currentGroup && (
                 <GroupHero 
                     group={currentGroup} 
-                    currentUserId={user.id} // <--- DEZE PROP IS CRUCIAAL VOOR HET POTLOODJE
+                    currentUserId={user.id} 
                 />
             )}
             {view !== 'history' && events && events.length > 0 && <ToggleMap events={events} />}
@@ -192,9 +219,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           {!currentGroup ? (
             <div>
                 <h2 className="text-3xl font-bold text-white tracking-tight text-serif">Agenda</h2>
-                <p className="text-slate-500 text-sm mt-1">
+                <div className="text-slate-500 text-sm mt-1">
                     {view === 'mine' ? 'Mijn plannen' : view === 'history' ? 'Het archief' : 'Alles wat er aan komt'}
-                </p>
+                </div>
             </div>
           ) : ( <div></div> )}
 
@@ -243,22 +270,27 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                   hasUnread = myReactions.some((r: Reaction) => new Date(r.created_at) > lastRead && r.actor_user_id !== user.id);
               }
               
-              const createdAt = new Date(event.created_at);
-              const isNewEvent = createdAt > threeDaysAgo && !myRsvp?.status;
+              const createdAt = new Date(event.created_at).getTime();
+              const isNewEvent = createdAt > threeDaysAgoTimestamp && !myRsvp?.status;
 
-              const mapsUrl = `http://googleusercontent.com/maps.google.com/7{encodeURIComponent(event.venue_name)}`;
+              const mapsUrl = `http://googleusercontent.com/maps.google.com/10{encodeURIComponent(event.venue_name)}`;
               const mapsLabel = event.venue_name; 
 
               const typeStyle = getEventTypeStyles(event.event_type || '')
+              const cardStyle = getCardStyles(event.event_type || '')
+
+              // --- SECURITY CHECK VOOR APP LINK ---
+              // Alleen tonen als je lid bent van de groep (of als het een openbaar event is)
+              const showChatLink = event.group_chat_link && (!event.group_id || myMemberGroupIds.includes(event.group_id));
 
               return (
                 <div 
                   key={event.id}
                   id={`event-${event.id}`}
-                  className={`relative border rounded-[2rem] group overflow-hidden transition-all flex flex-col ${
+                  className={`relative border rounded-[2rem] group overflow-hidden transition-all flex flex-col bg-slate-900 ${
                     view === 'history' 
-                      ? 'bg-slate-900/30 opacity-75 hover:opacity-100 border-white/5' 
-                      : 'bg-slate-900 border-white/10 hover:border-violet-500/30 shadow-lg shadow-black/20'
+                      ? 'opacity-75 hover:opacity-100 border-white/5' 
+                      : cardStyle
                   }`}
                 >
                   
@@ -369,6 +401,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                                      ♻️ Resale
                                   </a>
                               )}
+                              
+                              {/* --- HIER WORDT DE VEILIGE LINK GETOOND --- */}
+                              {showChatLink && (
+                                  <a href={event.group_chat_link} target="_blank" rel="noopener noreferrer" 
+                                     className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-green-500/10 text-green-300 border border-green-500/20 hover:bg-green-500/20 transition-colors flex items-center gap-1">
+                                     <MessageCircle size={10} /> App
+                                  </a>
+                              )}
                           </div>
 
                         </div>
@@ -399,11 +439,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               <h3 className="text-xl font-bold text-white mb-2">
                 {view === 'mine' ? 'Nog geen plannen' : 'Geen events gevonden'}
               </h3>
-              <p className="text-slate-500 mb-4 text-sm">
+              <div className="text-slate-500 mb-4 text-sm">
                   {groupId 
                     ? 'Deze groep heeft nog geen events.' 
                     : (view === 'mine' ? 'Zet jezelf op "Gaat" of "Misschien" bij een event om hem hier te zien.' : 'Er zijn geen publieke events.')}
-              </p>
+              </div>
               {view !== 'history' && (
                 <Link 
                     href={groupId ? `/events/new?group=${groupId}` : "/events/new"}

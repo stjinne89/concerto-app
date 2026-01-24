@@ -3,12 +3,10 @@
 import { updateEvent, getEvent, deleteEvent, scrapeEventUrl } from '@/app/actions'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation' 
-import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X } from 'lucide-react'
+import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 
-// Omdat dit een dynamische pagina is ([id]), krijgen we 'params' als een Promise
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
-  // We gebruiken 'use' om de params uit te pakken (Nieuw in Next.js/React)
   const { id } = use(params)
   const router = useRouter()
 
@@ -21,28 +19,32 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     venue: '',
     description: '',
     start_at: '',
+    end_at: '',
     type: 'Concert',
     ticket_link: '',
     ticketswap_link: '',
     resale_link: '',
-    image_url: '' // <--- NIEUW: State voor de foto
+    chat_link: '',
+    image_url: '' 
   })
 
-  // 1. Data ophalen bij het laden van de pagina
+  // 1. Data ophalen
   useEffect(() => {
     async function loadData() {
         const data = await getEvent(id)
         if (data) {
             setFormData({
                 title: data.title || '',
-                venue: data.venue_name || '', // Let op: in DB heet het venue_name
+                venue: data.venue_name || '',
                 description: data.description || '',
                 start_at: data.start_at ? new Date(data.start_at).toISOString().slice(0, 16) : '',
+                end_at: data.end_at ? new Date(data.end_at).toISOString().slice(0, 16) : '',
                 type: data.event_type || 'Concert',
                 ticket_link: data.ticket_link || '',
                 ticketswap_link: data.ticketswap_link || '',
                 resale_link: data.resale_link || '',
-                image_url: data.image_url || '' // <--- NIEUW: Laad opgeslagen foto
+                chat_link: data.group_chat_link || '',
+                image_url: data.image_url || ''
             })
         }
         setFetching(false)
@@ -50,7 +52,24 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     loadData()
   }, [id])
 
-  // 2. Scrape functie (voor als je een betere link hebt gevonden)
+  // --- SLIMME DATUM FUNCTIE ---
+  const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStart = e.target.value
+    let newEnd = formData.end_at
+
+    if (newStart && (!newEnd || newEnd < newStart)) {
+        const date = new Date(newStart)
+        date.setHours(date.getHours() + 3)
+        
+        newEnd = new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
+            .toISOString()
+            .slice(0, 16)
+    }
+
+    setFormData(prev => ({ ...prev, start_at: newStart, end_at: newEnd }))
+  }
+
+  // 2. Scrape functie
   const handleAutoFill = async () => {
     if (!scrapeUrl) return
     setLoading(true)
@@ -62,31 +81,27 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
         venue: result.data.venue || prev.venue,
         description: result.data.description || prev.description,
         start_at: result.data.start_at || prev.start_at,
-        image_url: result.data.image_url || prev.image_url, // <--- NIEUW: Update foto indien gevonden
+        image_url: result.data.image_url || prev.image_url,
         ticket_link: scrapeUrl
       }))
     }
     setLoading(false)
   }
 
-  // 3. Opslaan (Update)
+  // 3. Opslaan
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     await updateEvent(id, formData)
-    
-    // Na opslaan terug naar home
     router.push('/')
     router.refresh() 
   }
 
-  // 4. VERWIJDEREN
+  // 4. Verwijderen
   const handleDelete = async () => {
       if (!confirm('Weet je zeker dat je dit event wilt verwijderen?')) return
-      
       setLoading(true) 
       const result = await deleteEvent(id)
-      
       if (result.success) {
           router.push('/') 
           router.refresh()
@@ -119,12 +134,10 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                  <div className="w-16 h-16 rounded-2xl bg-violet-600/20 text-violet-400 flex items-center justify-center">
                     <Sparkles size={32} />
                 </div>
-                {/* DELETE KNOP */}
                 <button 
                     onClick={handleDelete}
                     type="button"
                     className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors"
-                    title="Verwijder Event"
                 >
                     <Trash2 size={20} />
                 </button>
@@ -132,7 +145,6 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
 
             <h1 className="text-2xl font-black text-white tracking-tight mb-8 text-center">Event Bewerken</h1>
             
-            {/* Scrape input voor updates */}
             <div className="mb-8 relative">
                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                     <Link2 size={16} className="text-slate-500" />
@@ -141,31 +153,26 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                     type="url" 
                     value={scrapeUrl}
                     onChange={(e) => setScrapeUrl(e.target.value)}
-                    placeholder="Nieuwe link scrapen?" 
+                    placeholder="Link scrapen?" 
                     className="w-full bg-slate-950 border border-violet-500/30 rounded-2xl pl-11 pr-12 py-4 text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all shadow-inner"
                 />
                 <button 
                     onClick={handleAutoFill}
                     disabled={loading || !scrapeUrl}
                     type="button"
-                    className="absolute right-2 top-2 bottom-2 aspect-square bg-violet-600 hover:bg-violet-500 text-white rounded-xl flex items-center justify-center transition-all disabled:opacity-50 disabled:hover:bg-violet-600"
+                    className="absolute right-2 top-2 bottom-2 aspect-square bg-violet-600 hover:bg-violet-500 text-white rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
                 >
                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                 </button>
             </div>
 
-            {/* --- NIEUW: IMAGE PREVIEW --- */}
             {formData.image_url && (
-                <div className="mb-8 relative h-48 w-full rounded-2xl overflow-hidden border border-white/10 shadow-lg group animate-in fade-in slide-in-from-top-4">
-                    <img 
-                        src={formData.image_url} 
-                        alt="Preview" 
-                        className="w-full h-full object-cover" 
-                    />
+                <div className="mb-8 relative h-48 w-full rounded-2xl overflow-hidden border border-white/10 shadow-lg group">
+                    <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
                     <button
                         type="button"
                         onClick={() => setFormData({...formData, image_url: ''})}
-                        className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full transition-colors backdrop-blur-sm"
+                        className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full backdrop-blur-sm"
                     >
                         <X size={16} />
                     </button>
@@ -188,30 +195,41 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Wanneer?</label>
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Start</label>
                         <input 
                             name="start_at" type="datetime-local" required 
                             value={formData.start_at}
-                            onChange={e => setFormData({...formData, start_at: e.target.value})}
+                            onChange={handleStartChange} // <--- HIER DE FIX
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Type</label>
-                        <select 
-                            name="type" 
-                            value={formData.type}
-                            onChange={e => setFormData({...formData, type: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none"
-                        >
-                            <option value="Concert" className="bg-slate-900">Concert</option>
-                            <option value="Festival" className="bg-slate-900">Festival</option>
-                            <option value="Club" className="bg-slate-900">Club / Nacht</option>
-                            <option value="Theater" className="bg-slate-900">Theater</option>
-                            <option value="Sport" className="bg-slate-900">Sport</option>
-                            <option value="Overig" className="bg-slate-900">Overig</option>
-                        </select>
+                        <label className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">Einde <span className="opacity-50">(Optioneel)</span></label>
+                        <input 
+                            name="end_at" type="datetime-local" 
+                            value={formData.end_at}
+                            min={formData.start_at}
+                            onChange={e => setFormData({...formData, end_at: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all text-sm"
+                        />
                     </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400 ml-1">Type</label>
+                    <select 
+                        name="type" 
+                        value={formData.type}
+                        onChange={e => setFormData({...formData, type: e.target.value})}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none"
+                    >
+                        <option value="Concert" className="bg-slate-900">Concert</option>
+                        <option value="Festival" className="bg-slate-900">Festival</option>
+                        <option value="Club / Nacht" className="bg-slate-900">Club / Nacht</option>
+                        <option value="Theater" className="bg-slate-900">Theater</option>
+                        <option value="Sport" className="bg-slate-900">Sport</option>
+                        <option value="Overig" className="bg-slate-900">Overig</option>
+                    </select>
                 </div>
 
                 <div className="space-y-2">
@@ -251,13 +269,13 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
 
                     <div className="relative group">
                          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                            <RefreshCw size={16} className="text-slate-500 group-focus-within:text-orange-400 transition-colors" />
+                            <MessageCircle size={16} className="text-slate-500 group-focus-within:text-green-400 transition-colors" />
                         </div>
                         <input 
-                            name="resale_link" type="url" placeholder="Extra Resale" 
-                            value={formData.resale_link}
-                            onChange={e => setFormData({...formData, resale_link: e.target.value})}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
+                            name="chat_link" type="url" placeholder="WhatsApp / Groep Link" 
+                            value={formData.chat_link}
+                            onChange={e => setFormData({...formData, chat_link: e.target.value})}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-500/50 transition-all"
                         />
                     </div>
                 </div>
