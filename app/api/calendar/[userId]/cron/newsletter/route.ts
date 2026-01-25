@@ -2,8 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-// 1. Initialiseer Resend met de key uit je .env
-const resend = new Resend(process.env.RESEND_API_KEY)
+
 
 // 2. Initialiseer Supabase met ADMIN rechten (Service Role)
 // Dit is nodig om de lijst van ALLE gebruikers op te halen (niet alleen jezelf)
@@ -13,6 +12,8 @@ const supabase = createClient(
 )
 
 export async function GET(request: Request) {
+    // 1. Initialiseer Resend met de key uit je .env
+const resend = new Resend(process.env.RESEND_API_KEY)
   // 3. Beveiliging: Check of de 'secret' klopt
   // Dit voorkomt dat vreemden deze link zomaar kunnen aanroepen
   const { searchParams } = new URL(request.url)
