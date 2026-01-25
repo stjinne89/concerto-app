@@ -181,12 +181,12 @@ function generateEmailHtml(events: any[], unsubscribeUrl: string, userName: stri
                 box-shadow: 0 0 40px rgba(124, 58, 237, 0.15); /* Paarse gloed */
             ">
                 <img src="${logoUrl}" alt="Concerto Logo" style="width: 120px; height: auto; margin: 0 auto; display: block; border-radius: 12px;" />
-                <div style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 4px; margin-top: 20px; font-weight: 800; color: #a78bfa;">Sunday Service</div>
+                <div style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 4px; margin-top: 20px; font-weight: 800; color: #a78bfa;">Concerto Sunday Service</div>
             </div>
 
             <p style="color: #cbd5e1; text-align: center; margin-bottom: 30px; font-size: 18px; line-height: 1.6;">
                 Hoi <strong>${userName}</strong>! 👋<br/>
-                <span style="color: #94a3b8; font-size: 16px;">Er staan deze week <strong>${events.length} events</strong> op de planning.</span>
+                <span style="color: #94a3b8; font-size: 16px;">Er staan deze week <strong>${events.length} events</strong> in de Concerto Agenda.</span>
             </p>
 
             ${listItems}
@@ -204,7 +204,7 @@ function generateEmailHtml(events: any[], unsubscribeUrl: string, userName: stri
                     border: 1px solid rgba(255,255,255,0.2);
                     display: inline-block;
                 ">
-                    Open Agenda
+                    Open Concerto App
                 </a>
                 
                 <p style="color: #475569; font-size: 12px; margin-top: 30px; line-height: 1.6;">
