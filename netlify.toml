@@ -4,3 +4,11 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Dit vertelt Netlify: Roep deze URL elke zondag aan
+[[scheduled_functions]]
+  function = "newsletter-trigger" # Dit is een alias, zie hieronder
+  schedule = "2 1 * * 0" # Elke zondag om 21:00 uur
