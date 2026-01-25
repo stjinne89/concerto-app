@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
-// We geven deze een andere naam om conflict te voorkomen (nodig voor admin acties)
+// We geven deze een alias om conflict te voorkomen met de server client
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 // --- HULPFUNCTIES ---
@@ -88,9 +88,8 @@ export async function signup(formData: FormData) {
       id: data.user.id,
       full_name: fullName,
       email: email,
-      // Iedereen begint met 0 XP en ingeschreven voor nieuwsbrief
-      xp_points: 0,
-      newsletter_subscribed: true 
+      xp_points: 0, // Start met 0 XP
+      newsletter_subscribed: true
     })
   }
 
@@ -143,8 +142,7 @@ export async function createEvent(data: any) {
     return { success: false, error }
   }
 
-  // --- GAMIFICATION: BELONING ---
-  // +50 XP voor het aanmaken van een event!
+  // GAMIFICATION: +50 XP voor event maken
   await incrementXP(user.id, 50, 'event')
 
   revalidatePath('/')
@@ -421,7 +419,6 @@ export async function addMusic(formData: FormData) {
         url: url
     })
 
-    // Bonus XP voor muziek toevoegen? Voor nu even niet, eerst de events.
     revalidatePath('/')
 }
 
@@ -438,19 +435,17 @@ export async function getGroupMusic(groupId: string) {
 }
 
 // ==========================================
-// 🚀 NIEUWE FUNCTIES VOOR FASE 4
+// 🚀 NIEUWE FUNCTIES VOOR FASE 4 (GAMIFICATION)
 // ==========================================
 
 // --- GAMIFICATION ENGINE 🏆 ---
 export async function incrementXP(userId: string, amount: number, type: 'event' | 'rsvp' | 'message') {
-    // We gebruiken hier de admin client zodat we zeker weten dat we mogen schrijven
-    // (Ook handig als we dit later vanuit een achtergrondtaak zouden doen)
+    // Gebruik admin client voor zekerheid
     const supabase = createAdminClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
   
-    // 1. Haal huidige stats op
     const { data: profile } = await supabase
         .from('profiles')
         .select('xp_points, events_created, rsvps_count, messages_count')
@@ -459,7 +454,6 @@ export async function incrementXP(userId: string, amount: number, type: 'event' 
   
     if (!profile) return
   
-    // 2. Bereken nieuwe waarden
     let newXp = (profile.xp_points || 0) + amount
     let newEvents = profile.events_created || 0
     let newRsvps = profile.rsvps_count || 0
@@ -469,7 +463,6 @@ export async function incrementXP(userId: string, amount: number, type: 'event' 
     if (type === 'rsvp') newRsvps++
     if (type === 'message') newMessages++
   
-    // 3. Schrijf weg
     await supabase
         .from('profiles')
         .update({
@@ -482,7 +475,82 @@ export async function incrementXP(userId: string, amount: number, type: 'event' 
         .eq('id', userId)
 }
 
-// --- NEWSLETTER UNSUBSCRIBE 📧 ---
+// --- RSVP MET PUNTEN ---
+export async function toggleRsvp(eventId: string, status: 'going' | 'maybe' | 'cant') {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+  
+    // 1. Check bestaande
+    const { data: existing } = await supabase
+      .from('rsvps')
+      .select('status')
+      .eq('event_id', eventId)
+      .eq('user_id', user.id)
+      .single()
+  
+    // 2. Opslaan
+    const { error } = await supabase
+      .from('rsvps')
+      .upsert({
+        event_id: eventId,
+        user_id: user.id,
+        status: status,
+        last_read_at: new Date().toISOString()
+      })
+  
+    if (error) {
+        console.error('RSVP Error:', error)
+        return { success: false }
+    }
+  
+    // 3. Punten uitdelen
+    if (!existing) {
+        // Nieuwe reactie
+        if (status === 'going') await incrementXP(user.id, 15, 'rsvp')
+        if (status === 'maybe') await incrementXP(user.id, 5, 'rsvp')
+    } else if (existing.status !== status) {
+        // Upgrade
+        if (status === 'going' && existing.status !== 'going') await incrementXP(user.id, 15, 'rsvp')
+        if (status === 'maybe' && existing.status === 'cant') await incrementXP(user.id, 5, 'rsvp')
+    }
+  
+    revalidatePath('/')
+    return { success: true }
+}
+
+// --- CHAT MET PUNTEN ---
+export async function sendChatMessage(eventId: string, message: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    if (!message.trim()) return
+
+    // 1. Opslaan
+    const { error } = await supabase
+        .from('event_chats')
+        .insert({
+            event_id: eventId,
+            user_id: user.id,
+            message: message.trim()
+        })
+    
+    if (error) return { success: false }
+
+    // 2. Notificatie trigger
+    await supabase
+        .from('events')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', eventId)
+
+    // 3. Punten (+2 XP)
+    await incrementXP(user.id, 2, 'message')
+
+    revalidatePath('/')
+    return { success: true }
+}
+
+// --- NEWSLETTER UNSUBSCRIBE ---
 export async function unsubscribeUser(userId: string) {
     const supabaseAdmin = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
