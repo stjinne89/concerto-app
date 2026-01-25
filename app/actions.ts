@@ -4,6 +4,8 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
+// We geven deze een andere naam om conflict te voorkomen (nodig voor admin acties)
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 // --- HULPFUNCTIES ---
 
@@ -85,7 +87,10 @@ export async function signup(formData: FormData) {
     await supabase.from('profiles').insert({
       id: data.user.id,
       full_name: fullName,
-      email: email
+      email: email,
+      // Iedereen begint met 0 XP en ingeschreven voor nieuwsbrief
+      xp_points: 0,
+      newsletter_subscribed: true 
     })
   }
 
@@ -119,12 +124,12 @@ export async function createEvent(data: any) {
       title: data.title,
       venue_name: data.venue,
       start_at: data.start_at,
-      end_at: data.end_at, // <--- NIEUW: Eindtijd
+      end_at: data.end_at,
       event_type: data.type,
       ticket_link: data.ticket_link,
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
-      group_chat_link: data.chat_link, // <--- NIEUW: App Link
+      group_chat_link: data.chat_link,
       description: data.description,
       image_url: data.image_url, 
       created_by: user.id,
@@ -137,6 +142,10 @@ export async function createEvent(data: any) {
     console.error('Create Event Error:', error)
     return { success: false, error }
   }
+
+  // --- GAMIFICATION: BELONING ---
+  // +50 XP voor het aanmaken van een event!
+  await incrementXP(user.id, 50, 'event')
 
   revalidatePath('/')
   
@@ -161,7 +170,6 @@ export async function getEvent(id: string) {
 }
 
 // --- 4. EVENTS: UPDATE (Bewerken) ---
-// Deze miste je net!
 
 export async function updateEvent(eventId: string, data: any) {
   const supabase = await createClient()
@@ -179,17 +187,16 @@ export async function updateEvent(eventId: string, data: any) {
       }
   }
 
-  // We gebruiken hier een update object
   const updateData: any = {
       title: data.title,
       venue_name: data.venue,
       start_at: data.start_at,
-      end_at: data.end_at, // <--- NIEUW
+      end_at: data.end_at,
       event_type: data.type,
       ticket_link: data.ticket_link,
       ticketswap_link: data.ticketswap_link,
       resale_link: data.resale_link,
-      group_chat_link: data.chat_link, // <--- NIEUW
+      group_chat_link: data.chat_link,
       description: data.description,
       image_url: data.image_url, 
   }
@@ -236,7 +243,7 @@ export async function deleteEvent(eventId: string) {
   return { success: true }
 }
 
-// --- 6. GROEP JOINEN MET CODE (AANGEPAST) ---
+// --- 6. GROEP JOINEN MET CODE ---
 
 export async function joinGroupWithCode(formData: FormData) {
   const code = formData.get('code') as string
@@ -247,7 +254,6 @@ export async function joinGroupWithCode(formData: FormData) {
 
   if (!code) return { success: false, error: 'Geen code ingevuld' }
 
-  // 1. Zoek de groep
   const { data: groupId, error } = await supabase
     .rpc('join_group_by_code', { input_code: code })
 
@@ -260,8 +266,6 @@ export async function joinGroupWithCode(formData: FormData) {
     return { success: false, error: 'Ongeldige code' }
   }
 
-  // 2. Voeg gebruiker toe aan de 'group_members' tabel
-  // We gebruiken .select() zodat hij niet crasht als je al lid bent
   await supabase
     .from('group_members')
     .insert({ group_id: groupId, user_id: user.id })
@@ -360,7 +364,7 @@ export async function updateAvatar(formData: FormData) {
   revalidatePath('/profile')
 }
 
-// --- GROEP PROFIEL & MUZIEK (AANGEPAST VOOR PLAYLIST) ---
+// --- 8. GROEP PROFIEL & MUZIEK ---
 
 export async function updateGroupProfile(groupId: string, formData: FormData) {
   const supabase = await createClient()
@@ -417,6 +421,7 @@ export async function addMusic(formData: FormData) {
         url: url
     })
 
+    // Bonus XP voor muziek toevoegen? Voor nu even niet, eerst de events.
     revalidatePath('/')
 }
 
@@ -430,4 +435,69 @@ export async function getGroupMusic(groupId: string) {
         .limit(10)
     
     return data || []
+}
+
+// ==========================================
+// 🚀 NIEUWE FUNCTIES VOOR FASE 4
+// ==========================================
+
+// --- GAMIFICATION ENGINE 🏆 ---
+export async function incrementXP(userId: string, amount: number, type: 'event' | 'rsvp' | 'message') {
+    // We gebruiken hier de admin client zodat we zeker weten dat we mogen schrijven
+    // (Ook handig als we dit later vanuit een achtergrondtaak zouden doen)
+    const supabase = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  
+    // 1. Haal huidige stats op
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('xp_points, events_created, rsvps_count, messages_count')
+        .eq('id', userId)
+        .single()
+  
+    if (!profile) return
+  
+    // 2. Bereken nieuwe waarden
+    let newXp = (profile.xp_points || 0) + amount
+    let newEvents = profile.events_created || 0
+    let newRsvps = profile.rsvps_count || 0
+    let newMessages = profile.messages_count || 0
+  
+    if (type === 'event') newEvents++
+    if (type === 'rsvp') newRsvps++
+    if (type === 'message') newMessages++
+  
+    // 3. Schrijf weg
+    await supabase
+        .from('profiles')
+        .update({
+            xp_points: newXp,
+            events_created: newEvents,
+            rsvps_count: newRsvps,
+            messages_count: newMessages,
+            last_activity_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+}
+
+// --- NEWSLETTER UNSUBSCRIBE 📧 ---
+export async function unsubscribeUser(userId: string) {
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ newsletter_subscribed: false })
+      .eq('id', userId)
+  
+    if (error) {
+      console.error('Unsubscribe failed:', error)
+      return { success: false, error: error.message }
+    }
+  
+    return { success: true }
 }
