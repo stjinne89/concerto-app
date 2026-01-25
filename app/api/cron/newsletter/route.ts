@@ -2,23 +2,22 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-// 1. Initialiseer Supabase met ADMIN rechten (Service Role)
+// 1. Initialiseer Supabase (Admin)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 export async function GET(request: Request) {
-  // 1. Initialiseer Resend
+  // 2. Initialiseer Resend (veilig binnen de functie)
   const resend = new Resend(process.env.RESEND_API_KEY)
 
-  // 2. Haal parameters op
   const { searchParams } = new URL(request.url)
   const secret = searchParams.get('secret')
-  const preview = searchParams.get('preview') // Nieuw: ?preview=true
-  const testEmail = searchParams.get('test_email') // Nieuw: ?test_email=jouw@mail.nl
+  const preview = searchParams.get('preview')
+  const testEmail = searchParams.get('test_email')
   
-  // 3. Beveiliging
+  // 3. Check Secret
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -40,44 +39,60 @@ export async function GET(request: Request) {
         return NextResponse.json({ message: 'Geen events deze week.' })
       }
 
-      // --- OPTIE A: BROWSER PREVIEW (Zien zonder te sturen) ---
+      // --- STAP 5: GEBRUIKERS & NAMEN OPHALEN ---
+      
+      // A. Haal Auth Users (voor email)
+      const { data: { users }, error: userError } = await supabase.auth.admin.listUsers()
+      if (userError || !users) return NextResponse.json({ error: 'Geen users gevonden' })
+
+      // B. Haal Profielen (voor Voornaam & Voorkeuren)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, newsletter_subscribed')
+      
+      // Helper om profiel te vinden bij user ID
+      const getProfile = (uid: string) => profiles?.find(p => p.id === uid)
+
+      // --- OPTIE A: PREVIEW IN BROWSER ---
       if (preview === 'true') {
-          // Genereer HTML met een dummy unsubscribe link
-          const html = generateEmailHtml(events, '#')
-          // Stuur HTML terug zodat de browser het rendert als een webpagina
-          return new Response(html, { headers: { 'Content-Type': 'text/html' } })
+          // We doen alsof we "Preview User" heten
+          const html = generateEmailHtml(events, '#', 'Preview User')
+          // BELANGRIJK: charset=utf-8 toevoegen tegen de rare tekens!
+          return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
       }
 
-      // --- OPTIE B: TEST MAIL (Sturen naar 1 persoon) ---
+      // --- OPTIE B: TEST MAIL ---
       if (testEmail) {
-          const html = generateEmailHtml(events, 'https://concerto-app.netlify.app/unsubscribe?test=true')
-          const data = await resend.emails.send({
+          const html = generateEmailHtml(events, '#', 'Testpersoon')
+          await resend.emails.send({
             from: 'Concerto <onboarding@resend.dev>',
             to: [testEmail], 
             subject: `[TEST] Concerto Weekoverzicht`,
             html: html,
           })
-          return NextResponse.json({ success: true, message: `Testmail verstuurd naar ${testEmail}` })
+          return NextResponse.json({ success: true, message: `Test verstuurd naar ${testEmail}` })
       }
 
-      // --- DE ECHTE LOOP (Normale werking) ---
-      
-      // 5. Haal ALLE gebruikers op
-      const { data: { users }, error: userError } = await supabase.auth.admin.listUsers()
-      if (userError || !users) return NextResponse.json({ error: 'Geen users' })
-
-      // 6. Haal unsubscribe voorkeuren op
-      const { data: profiles } = await supabase.from('profiles').select('id, newsletter_subscribed')
-      const unsubscribedIds = profiles?.filter(p => !p.newsletter_subscribed).map(p => p.id) || []
-
+      // --- DE ECHTE LOOP ---
       const results = []
       
       for (const user of users) {
           if (!user.email) continue
-          if (unsubscribedIds.includes(user.id)) continue
+
+          const profile = getProfile(user.id)
+          
+          // Check uitschrijving
+          if (profile?.newsletter_subscribed === false) {
+              continue
+          }
+
+          // Haal voornaam op (eerste deel van full_name) of fallback
+          const firstName = profile?.full_name ? profile.full_name.split(' ')[0] : 'Concerto-lid'
 
           const unsubscribeUrl = `https://concerto-app.netlify.app/unsubscribe?id=${user.id}`
-          const emailHtml = generateEmailHtml(events, unsubscribeUrl)
+          
+          // Genereer mail MET naam
+          const emailHtml = generateEmailHtml(events, unsubscribeUrl, firstName)
 
           try {
             const data = await resend.emails.send({
@@ -101,11 +116,10 @@ export async function GET(request: Request) {
   }
 }
 
-// --- HULPFUNCTIE: HTML GENERATOR ---
-function generateEmailHtml(events: any[], unsubscribeUrl: string) {
-    // 1. De link naar jouw logo (Zorg dat de bestandsnaam klopt!)
-    // Als je bestand .jpg of .svg is, pas dat hieronder aan.
-    const logoUrl = "https://concerto-app.netlify.app/concerto_logo.png"
+// --- HULPFUNCTIE: HTML GENERATOR (Met Naam & Nieuw Design) ---
+function generateEmailHtml(events: any[], unsubscribeUrl: string, userName: string) {
+    
+    const logoUrl = "https://concerto-app.netlify.app/concerto_logo.png" // Zorg dat deze bestaat!
 
     const listItems = events.map(event => {
         const date = new Date(event.start_at)
@@ -113,26 +127,30 @@ function generateEmailHtml(events: any[], unsubscribeUrl: string) {
         const dayNum = date.getDate()
         const time = date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
         
-        let color = '#8b5cf6' // Violet
-        if (event.event_type === 'Festival') color = '#f59e0b' // Goud
-        if (event.event_type?.includes('Club')) color = '#d946ef' // Roze
+        let color = '#8b5cf6' 
+        if (event.event_type === 'Festival') color = '#f59e0b' 
+        if (event.event_type?.includes('Club')) color = '#d946ef' 
 
         const imagePart = event.image_url 
-            ? `<img src="${event.image_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #334155;" alt="${event.title}" />` 
+            ? `<div style="height: 160px; width: 100%; background-image: url('${event.image_url}'); background-size: cover; background-position: center;"></div>` 
             : ''
 
         return `
-        <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 16px; margin-bottom: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 20px; margin-bottom: 24px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);">
             ${imagePart}
-            <div style="padding: 20px; display: flex; align-items: flex-start;">
-                <div style="background-color: rgba(255,255,255,0.05); border-radius: 12px; padding: 10px; text-align: center; min-width: 50px; margin-right: 16px; border: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">${day}</div>
-                    <div style="font-size: 20px; color: #ffffff; font-weight: 900; line-height: 1; margin-top: 2px;">${dayNum}</div>
+            <div style="padding: 24px; display: flex; align-items: flex-start;">
+                <div style="background-color: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px 0; text-align: center; min-width: 60px; margin-right: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 11px; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">${day}</div>
+                    <div style="font-size: 24px; color: #ffffff; font-weight: 900; line-height: 1; margin-top: 4px;">${dayNum}</div>
                 </div>
                 <div>
-                    <h3 style="margin: 0 0 6px 0; color: #ffffff; font-size: 18px; font-family: sans-serif; font-weight: 700;">${event.title}</h3>
-                    <div style="color: #94a3b8; font-size: 13px; margin-bottom: 10px;">📍 ${event.venue_name} &bull; ⌚ ${time}</div>
-                    <span style="display: inline-block; font-size: 10px; font-weight: bold; color: ${color}; background-color: ${color}15; padding: 4px 10px; border-radius: 99px; text-transform: uppercase; border: 1px solid ${color}30;">
+                    <h3 style="margin: 0 0 8px 0; color: #ffffff; font-size: 18px; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; letter-spacing: -0.5px;">${event.title}</h3>
+                    <div style="color: #cbd5e1; font-size: 14px; margin-bottom: 12px; display: flex; align-items: center;">
+                        <span>📍 ${event.venue_name}</span>
+                        <span style="margin: 0 8px; opacity: 0.3;">|</span>
+                        <span>⌚ ${time}</span>
+                    </div>
+                    <span style="display: inline-block; font-size: 10px; font-weight: bold; color: ${color}; background-color: ${color}15; padding: 4px 12px; border-radius: 99px; text-transform: uppercase; border: 1px solid ${color}40; letter-spacing: 1px;">
                         ${event.event_type || 'Event'}
                     </span>
                 </div>
@@ -143,37 +161,59 @@ function generateEmailHtml(events: any[], unsubscribeUrl: string) {
 
     return `
     <!DOCTYPE html>
-    <html>
+    <html lang="nl">
     <head>
+        <meta charset="utf-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="color-scheme" content="dark">
         <meta name="supported-color-schemes" content="dark">
+        <title>Concerto Sunday Service</title>
     </head>
-    <body style="background-color: #0f172a; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px 0; margin: 0;">
+    <body style="background-color: #0f172a; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px 0; margin: 0; -webkit-font-smoothing: antialiased;">
         <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
             
-            <div style="text-align: center; margin-bottom: 40px;">
-                <img src="${logoUrl}" alt="Concerto Logo" style="width: 150px; height: auto; margin: 0 auto; display: block;" />
-                
-                <p style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 3px; margin-top: 16px; font-weight: bold;">Sunday Service</p>
+            <div style="
+                background-color: rgba(30, 41, 59, 0.5); 
+                border: 1px solid rgba(255, 255, 255, 0.1); 
+                border-radius: 24px; 
+                padding: 40px 20px; 
+                margin-bottom: 40px; 
+                text-align: center;
+                box-shadow: 0 0 40px rgba(124, 58, 237, 0.15); /* Paarse gloed */
+            ">
+                <img src="${logoUrl}" alt="Concerto Logo" style="width: 120px; height: auto; margin: 0 auto; display: block; border-radius: 12px;" />
+                <div style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 4px; margin-top: 20px; font-weight: 800; color: #a78bfa;">Sunday Service</div>
             </div>
 
-            <p style="color: #cbd5e1; text-align: center; margin-bottom: 30px; font-size: 16px; line-height: 1.5;">
-                Hoi Concerto-lid! ☕<br/>
-                Er staan <strong>${events.length} events</strong> op de Concerto Agenda voor deze week. <br/>Kijk waar jij bij kan zijn!
+            <p style="color: #cbd5e1; text-align: center; margin-bottom: 30px; font-size: 18px; line-height: 1.6;">
+                Hoi <strong>${userName}</strong>! 👋<br/>
+                <span style="color: #94a3b8; font-size: 16px;">Er staan deze week <strong>${events.length} events</strong> op de planning.</span>
             </p>
 
             ${listItems}
 
-            <div style="text-align: center; margin-top: 40px; border-top: 1px solid #334155; padding-top: 30px;">
-                <a href="https://concerto-app.netlify.app" style="background-color: #7c3aed; color: white; text-decoration: none; padding: 14px 28px; border-radius: 99px; font-weight: bold; font-size: 14px; box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);">Open Agenda</a>
+            <div style="text-align: center; margin-top: 50px; border-top: 1px solid #334155; padding-top: 30px;">
+                <a href="https://concerto-app.netlify.app" style="
+                    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+                    color: white; 
+                    text-decoration: none; 
+                    padding: 16px 32px; 
+                    border-radius: 99px; 
+                    font-weight: bold; 
+                    font-size: 14px; 
+                    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    display: inline-block;
+                ">
+                    Open Agenda
+                </a>
                 
-                <p style="color: #475569; font-size: 12px; margin-top: 24px; line-height: 1.6;">
-                    Je ontvangt dit omdat je lid bent van de Concerto Community.<br/>
+                <p style="color: #475569; font-size: 12px; margin-top: 30px; line-height: 1.6;">
+                    Je ontvangt dit omdat je lid bent van Concerto.<br/>
                     <a href="${unsubscribeUrl}" style="color: #64748b; text-decoration: underline;">Uitschrijven</a>
                 </p>
 
-                <div style="margin-top: 30px; opacity: 0.3;">
-                     <img src="${logoUrl}" alt="Concerto" style="width: 30px; height: auto;" />
+                <div style="margin-top: 30px; opacity: 0.2; filter: grayscale(100%);">
+                     <img src="${logoUrl}" alt="Concerto" style="width: 24px; height: auto;" />
                 </div>
             </div>
         </div>
