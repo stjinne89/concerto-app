@@ -199,11 +199,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           Concerto
         </h1>
         
-        <NotificationDropdown 
-            profile={profile} 
-            events={events}
-            currentUserId={user.id} 
-        />
+        {/* RECHTS: NOTIFICATIES EN DISCOVER KNOP */}
+        <div className="flex items-center gap-3">
+          
+          {/* NIEUW: DISCOVER KNOP (Tinder voor Events) */}
+          <Link 
+            href="/discover" 
+            className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white rounded-full transition-colors relative border border-white/5"
+            title="Ontdek nieuwe events"
+          >
+            <span className="text-xl leading-none pt-0.5">🔥</span>
+            {/* Rood bolletje voor actie */}
+            <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-950 animate-pulse"></span>
+          </Link>
+
+          <NotificationDropdown 
+              profile={profile} 
+              events={events}
+              currentUserId={user.id} 
+          />
+        </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-4 pt-24">
