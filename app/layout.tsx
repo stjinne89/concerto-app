@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Playfair_Display, DM_Sans } from "next/font/google"; // <--- AANGEPAST
+import { Playfair_Display, DM_Sans } from "next/font/google";
 import "./globals.css";
+import GamificationExplainer from '@/components/GamificationExplainer'
 
-// 1. Configureer de fonts
 const playfair = Playfair_Display({ 
   subsets: ["latin"],
-  variable: '--font-serif', // We maken hier een CSS variabele van
+  variable: '--font-serif',
   display: 'swap',
 });
 
@@ -27,9 +27,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      {/* 2. Voeg de variabelen toe aan de body */}
       <body className={`${playfair.variable} ${dmSans.variable} antialiased bg-background text-foreground`}>
         {children}
+        {/* Nu staat hij netjes BINNEN de body */}
+        <GamificationExplainer />
       </body>
     </html>
   );

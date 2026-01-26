@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { ArrowLeft, Save, Star, Activity, Trophy } from 'lucide-react'
 import CalendarSubscription from '@/components/CalendarSubscription'
 import AvatarUpload from '@/components/AvatarUpload'
+import SecretDoor from '@/components/SecretDoor'
+import HelpButton from '@/components/HelpButton' // <--- DEZE WAS IK VERGETEN!
 import { getRank, getArchetype } from '@/utils/gamification'
 
 export default async function ProfilePage() {
@@ -12,10 +14,10 @@ export default async function ProfilePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 1. Haal profiel op MET stats
+  // 1. Haal profiel op MET stats EN RATINGS_COUNT
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url, xp_points, events_created, messages_count')
+    .select('full_name, avatar_url, xp_points, events_created, messages_count, ratings_count')
     .eq('id', user.id)
     .single()
 
@@ -35,8 +37,7 @@ export default async function ProfilePage() {
   const rank = getRank(profile)
   const archetype = getArchetype(profile, rsvpStats)
 
-  // Helper om background kleur te bepalen uit border kleur (voor de gloed bovenin)
-  // We vervangen 'border-' door 'bg-'
+  // Helper om background kleur te bepalen uit border kleur
   const bgGlowColor = rank.borderColor.replace('border-', 'bg-')
 
   // Server Action
@@ -66,9 +67,7 @@ export default async function ProfilePage() {
         {/* --- GAMIFICATION HEADER --- */}
         <div className="text-center mb-10">
             
-            {/* 1. AVATAR MET GEKLEURDE RAND */}
             <div className="flex justify-center mb-4 relative">
-                 {/* Hier gebruiken we nu rank.borderColor direct */}
                  <div className={`p-1.5 rounded-full ${rank.borderColor} border-2 ${rank.glow} transition-all duration-500`}>
                     <div className="rounded-full overflow-hidden w-[150px] h-[150px]">
                         <AvatarUpload 
@@ -78,7 +77,7 @@ export default async function ProfilePage() {
                         />
                     </div>
                  </div>
-                 {/* KROONTJE (Alleen voor Level 8) */}
+                 {/* KROONTJE */}
                  {rank.icon && (
                      <div className="absolute -top-6 animate-bounce text-4xl filter drop-shadow-lg">
                          {rank.icon}
@@ -86,10 +85,8 @@ export default async function ProfilePage() {
                  )}
             </div>
             
-            {/* 2. NAAM (In het wit) */}
             <h1 className="text-3xl font-black text-white tracking-tight mb-2 font-serif">{profile?.full_name}</h1>
             
-            {/* 3. TYPECAST (Met quotes en juiste kleur) */}
             <div className={`text-sm font-bold uppercase tracking-widest ${rank.textColor}`}>
                 "{archetype}"
             </div>
@@ -113,6 +110,11 @@ export default async function ProfilePage() {
                 <div className="text-2xl font-black text-white">{rank.level}</div>
                 <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Level</div>
             </div>
+        </div>
+
+        {/* --- THE VAULT (SECRET DOOR) --- */}
+        <div className="mb-8">
+             <SecretDoor ratingsCount={profile?.ratings_count || 0} />
         </div>
 
         {/* AGENDA ABONNEMENT */}
@@ -139,6 +141,8 @@ export default async function ProfilePage() {
             <Save size={18} /> Opslaan
           </button>
         </form>
+
+        <HelpButton />
 
         <form action={async () => {
           'use server'

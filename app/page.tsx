@@ -9,7 +9,8 @@ import GroupSwitcher from '@/components/GroupSwitcher'
 import GroupHero from '@/components/GroupHero' 
 import NotificationDropdown from '@/components/NotificationDropdown'
 import { MessageCircle } from 'lucide-react'
-import GroupMembers from '@/components/GroupMembers' // Zorg dat deze import er staat!
+import GroupMembers from '@/components/GroupMembers'
+import EventRatingControl from '@/components/EventRatingControl'
 
 // Types definitions
 type Rsvp = {
@@ -90,7 +91,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // UPDATE 1: Haal ook jouw eigen stats op (voor NotificationDropdown etc)
+  // Haal ook jouw eigen stats op
   const { data: profile } = await supabase
     .from('profiles')
     .select('avatar_url, full_name, address, xp_points, events_created, messages_count')
@@ -140,7 +141,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   threeDaysAgoDate.setDate(threeDaysAgoDate.getDate() - 3);
   const threeDaysAgoTimestamp = threeDaysAgoDate.getTime();
 
-  // UPDATE 2: Haal de stats op van IEDEREEN die rsvp't
+  // Haal de stats op, en de ratings
   let query = supabase
     .from('events')
     .select(`
@@ -151,8 +152,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         last_read_at, 
         profiles ( full_name, avatar_url, xp_points, events_created, messages_count )
       ),
-      rsvp_reactions (*)
-    `)
+      rsvp_reactions (*),
+      event_ratings (*) 
+    `) 
 
   if (view === 'history') {
     query = query.lt('start_at', now).order('start_at', { ascending: false })
@@ -428,13 +430,30 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                     </div>
 
                     <div className="mt-auto pt-4 border-t border-white/10">
-                      <RsvpControl 
-                        eventId={event.id} 
-                        myStatus={getMyStatus(event.id)} 
-                        allRsvps={event.rsvps || []}
-                        initialReactions={event.rsvp_reactions || []}
-                        currentUserId={user.id}
-                      />
+                      
+                      {/* 3. HIER IS DE MAGIE: IN DE GESCHIEDENIS TONEN WE DE RATING KNOP */}
+                      {view === 'history' ? (
+                          <div className="mb-4">
+                               <EventRatingControl 
+                                  eventId={event.id}
+                                  userId={user.id}
+                                  eventName={event.title} // <--- NAAM TOEGEVOEGD!
+                                  eventType={event.event_type || 'default'}
+                                  allRatings={event.event_ratings || []}
+                                  initialRating={event.event_ratings?.find((r: any) => r.user_id === user.id) || null}
+                                  isAttending={myRsvp?.status === 'going'}
+                               />
+                          </div>
+                      ) : (
+                          // IN DE TOEKOMST GEWOON DE NORMALE RSVP KNOPPEN
+                          <RsvpControl 
+                            eventId={event.id} 
+                            myStatus={getMyStatus(event.id)} 
+                            allRsvps={event.rsvps || []}
+                            initialReactions={event.rsvp_reactions || []}
+                            currentUserId={user.id}
+                          />
+                      )}
                       
                       <EventChat 
                           eventId={event.id} 
