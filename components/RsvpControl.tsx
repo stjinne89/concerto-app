@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Check, HelpCircle, X, Loader2, Plus } from 'lucide-react'
+import GamifiedAvatar from '@/components/GamifiedAvatar'
 
 // Types
 type RsvpWithProfile = {
@@ -12,6 +13,10 @@ type RsvpWithProfile = {
   profiles: {
     full_name: string | null
     avatar_url: string | null
+    // Deze stats hebben we nodig voor de GamifiedAvatar!
+    xp_points?: number
+    events_created?: number
+    messages_count?: number
   } | null
 }
 
@@ -80,7 +85,7 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
         // Verwijder als hij al bestaat (toggle off)
         newReactions = newReactions.filter(r => r.id !== existing.id)
     } else {
-        // Voeg toe (toggle on) - fake ID voor nu
+        // Voeg toe (toggle on)
         newReactions.push({
             id: 'temp-' + Date.now(),
             target_user_id: targetUserId,
@@ -134,25 +139,23 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
 
   return (
     <div className="mt-4">
-      {/* 1. HEADER */}
+      {/* 1. HEADER (De kleine rondjes) */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-3 text-sm font-bold uppercase tracking-wider text-slate-300 hover:text-white transition-colors mb-4 w-full"
       >
-        <div className="flex -space-x-3">
+        <div className="flex -space-x-2 items-center">
             {rsvps.filter(r => r.status === 'going').slice(0, 3).map((r, i) => (
-                <div key={i} className="w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden relative shadow-sm">
-                    {r.profiles?.avatar_url ? (
-                        <img src={r.profiles.avatar_url} alt="Av" className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white">
-                            {r.profiles?.full_name?.charAt(0)}
-                        </div>
-                    )}
+                <div key={i} className="relative transition-transform hover:scale-110 hover:z-10">
+                    <GamifiedAvatar 
+                        profile={r.profiles} 
+                        size="sm" 
+                        showCrown={false} // Geen kroontjes in deze kleine weergave
+                    />
                 </div>
             ))}
             {goingCount > 3 && (
-                 <div className="w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 flex items-center justify-center text-xs font-bold shadow-sm">
+                 <div className="w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 flex items-center justify-center text-xs font-bold shadow-sm relative z-0">
                     +{goingCount - 3}
                  </div>
             )}
@@ -171,7 +174,7 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                   const info = getStatusInfo(r.status)
                   const userReactions = reactions.filter(react => react.target_user_id === r.user_id)
                   
-                  // Groepeer emoji's (bijv: "🔥 x2")
+                  // Groepeer emoji's
                   const emojiCounts: {[key: string]: number} = {}
                   userReactions.forEach(react => {
                       emojiCounts[react.emoji] = (emojiCounts[react.emoji] || 0) + 1
@@ -182,20 +185,20 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                   return (
                     <div key={r.user_id} className="relative group/item">
                         <div 
-                            // Klikken op de rij opent het emoji menu
                             onClick={() => setActiveReactionId(isMenuOpen ? null : r.user_id)}
                             className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden border-2 border-slate-900 relative shadow-sm">
-                                    {r.profiles?.avatar_url ? (
-                                        <img src={r.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-sm font-bold text-slate-400">
-                                            {r.profiles?.full_name?.charAt(0)}
-                                        </div>
-                                    )}
+                                
+                                {/* HIER DE NIEUWE GAMIFIED AVATAR */}
+                                <div>
+                                    <GamifiedAvatar 
+                                        profile={r.profiles} 
+                                        size="md" // Iets groter (48px) zodat de rand goed zichtbaar is
+                                        showCrown={true} 
+                                    />
                                 </div>
+
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="block text-sm font-bold text-slate-200">
@@ -219,13 +222,12 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                                 </div>
                             </div>
                             
-                            {/* Klein plusje dat verschijnt bij hover */}
                             <div className={`opacity-0 group-hover/item:opacity-100 transition-opacity text-slate-500 ${isMenuOpen ? 'opacity-100' : ''}`}>
                                 <Plus size={16} />
                             </div>
                         </div>
 
-                        {/* HET EMOJI MENU (POPOVER) */}
+                        {/* HET EMOJI MENU */}
                         {isMenuOpen && (
                             <div className="absolute left-14 bottom-10 z-20 bg-slate-800 border border-slate-700 shadow-xl rounded-full flex gap-1 p-1 animate-in zoom-in-95 duration-100">
                                 {EMOJI_OPTIONS.map(emoji => {
@@ -234,7 +236,7 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                                         <button
                                             key={emoji}
                                             onClick={(e) => {
-                                                e.stopPropagation() // Voorkom dat de rij sluit
+                                                e.stopPropagation() 
                                                 handleReaction(r.user_id, emoji)
                                             }}
                                             className={`w-8 h-8 flex items-center justify-center rounded-full text-lg hover:scale-125 transition-transform ${hasReacted ? 'bg-white/10 border border-white/20' : 'hover:bg-white/5'}`}
@@ -245,7 +247,7 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                                 })}
                             </div>
                         )}
-                        {/* Overlay om menu te sluiten als je ernaast klikt */}
+                        {/* Overlay om menu te sluiten */}
                         {isMenuOpen && (
                             <div 
                                 className="fixed inset-0 z-10" 
@@ -260,7 +262,7 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
           </div>
       )}
 
-      {/* 3. KNOPPEN (Jouw status) */}
+      {/* 3. KNOPPEN */}
       <div className="flex p-1 bg-slate-900/50 rounded-xl border border-white/5 shadow-sm relative">
         {loading && <div className="absolute inset-0 bg-slate-950/50 z-10 rounded-xl flex items-center justify-center"><Loader2 className="animate-spin text-white"/></div>}
         

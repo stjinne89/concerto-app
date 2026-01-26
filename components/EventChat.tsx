@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { MessageCircle, Send, X, Loader2 } from 'lucide-react'
 import { markAsRead } from '@/app/actions'
+import GamifiedAvatar from '@/components/GamifiedAvatar'
 
 type Message = {
   id: string
@@ -13,6 +14,10 @@ type Message = {
   profiles: {
     full_name: string | null
     avatar_url: string | null
+    // We voegen de stats toe voor de gekleurde randjes!
+    xp_points?: number
+    events_created?: number
+    messages_count?: number
   }
 }
 
@@ -24,11 +29,8 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
   const [sending, setSending] = useState(false)
   
   const supabase = createClient()
-  
-  // We gebruiken een ref naar de CONTAINER (de div met scrollbar), niet een los element
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  // Functie om naar beneden te scrollen zonder de pagina te laten springen
   const scrollToBottom = () => {
     if (scrollContainerRef.current) {
         const { scrollHeight, clientHeight } = scrollContainerRef.current
@@ -38,9 +40,10 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
 
   const fetchMessages = async () => {
     setLoading(true)
+    // LET OP: We gebruiken nu 'event_chats' (meervoud) en halen extra stats op
     const { data } = await supabase
-      .from('event_chat')
-      .select('*, profiles(full_name, avatar_url)')
+      .from('event_chats')
+      .select('*, profiles(full_name, avatar_url, xp_points, events_created, messages_count)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: true })
 
@@ -55,7 +58,6 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
 
     fetchMessages()
 
-    // Markeer als gelezen zodra je opent
     if (hasUnread) {
         markAsRead(eventId)
     }
@@ -65,12 +67,13 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
       .on('postgres_changes', { 
         event: 'INSERT', 
         schema: 'public', 
-        table: 'event_chat',
+        table: 'event_chats', // Meervoud!
         filter: `event_id=eq.${eventId}`
       }, async (payload) => {
+         // Als er een nieuw bericht binnenkomt, halen we ook direct de stats op van die persoon
          const { data: userData } = await supabase
             .from('profiles')
-            .select('full_name, avatar_url')
+            .select('full_name, avatar_url, xp_points, events_created, messages_count')
             .eq('id', payload.new.user_id)
             .single()
          
@@ -81,7 +84,6 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
 
          setMessages(prev => [...prev, newMsg])
          
-         // Als de chat open staat en er komt een bericht binnen: markeer weer als gelezen
          if (isOpen) markAsRead(eventId)
       })
       .subscribe()
@@ -91,10 +93,8 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
     }
   }, [isOpen, eventId])
 
-  // Scroll effect: alleen scrollen als de berichten veranderen én de chat open is
   useEffect(() => {
     if (isOpen) {
-        // Korte timeout om zeker te weten dat de DOM is bijgewerkt
         setTimeout(scrollToBottom, 100)
     }
   }, [messages, isOpen])
@@ -106,17 +106,14 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
     setSending(true)
     const text = newMessage
     setNewMessage('') 
-
-    // Optimistische update (zorgt dat het voelt alsof het direct verstuurd is)
-    // We wachten op de echte data via realtime, maar dit maakt het sneller
     
-    await supabase.from('event_chat').insert({
+    // Opslaan in de juiste tabel
+    await supabase.from('event_chats').insert({
       event_id: eventId,
       user_id: currentUserId,
       content: text
     })
     
-    // Update de timestamp van het event zodat anderen een melding krijgen
     await supabase
         .from('events')
         .update({ last_message_at: new Date().toISOString() })
@@ -162,10 +159,9 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
         </button>
       </div>
 
-      {/* De container met de ref voor het scrollen */}
       <div 
         ref={scrollContainerRef} 
-        className="h-64 overflow-y-auto p-4 space-y-3 bg-slate-900/50 scroll-smooth"
+        className="h-64 overflow-y-auto p-4 space-y-4 bg-slate-900/50 scroll-smooth"
       >
         {loading && messages.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-500">
@@ -179,23 +175,27 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
             messages.map(msg => {
                 const isMe = msg.user_id === currentUserId
                 return (
-                    <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
-                         <div className="w-6 h-6 rounded-full bg-slate-800 overflow-hidden shrink-0 border border-white/10 mt-1">
-                            {msg.profiles?.avatar_url ? (
-                                <img src={msg.profiles.avatar_url} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-[8px] text-slate-500 font-bold">
-                                    {msg.profiles?.full_name?.charAt(0)}
-                                </div>
-                            )}
-                        </div>
-                        <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                    <div key={msg.id} className={`flex gap-3 items-end ${isMe ? 'flex-row-reverse' : ''}`}>
+                         
+                         {/* HIER IS DE NIEUWE AVATAR! */}
+                         <div className="shrink-0 mb-1">
+                            <GamifiedAvatar 
+                                profile={msg.profiles} 
+                                size="sm" 
+                                showCrown={false} // Geen kroontje in de chat, te druk
+                            />
+                         </div>
+
+                        <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
                             isMe 
-                            ? 'bg-violet-600 text-white rounded-tr-none' 
-                            : 'bg-slate-800 text-slate-300 rounded-tl-none border border-white/5'
+                            ? 'bg-violet-600 text-white rounded-br-none' 
+                            : 'bg-slate-800 text-slate-300 rounded-bl-none border border-white/5'
                         }`}>
+                            <span className="text-[9px] font-bold opacity-50 block mb-0.5">
+                                {msg.profiles?.full_name?.split(' ')[0] || 'Onbekend'}
+                            </span>
                             <p>{msg.content}</p>
-                            <span className="text-[9px] opacity-50 block mt-1 text-right">
+                            <span className="text-[9px] opacity-40 block mt-1 text-right">
                                 {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                             </span>
                         </div>

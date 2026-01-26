@@ -1,8 +1,9 @@
 export type Rank = {
     name: string
-    color: string // Tailwind classes voor border/text
-    glow: string // Tailwind classes voor box-shadow/glow
-    icon?: string // Voor het kroontje
+    borderColor: string // De rand om de avatar
+    textColor: string   // De kleur van de tekst
+    glow: string        // De gloed eromheen
+    icon?: string       // Het kroontje
     level: number
 }
 
@@ -16,7 +17,8 @@ export function getRank(profile: any): Rank {
         return {
             level: 8,
             name: "The Icon",
-            color: "border-cyan-300 text-cyan-300",
+            borderColor: "border-cyan-300",
+            textColor: "text-cyan-300",
             glow: "shadow-[0_0_15px_rgba(103,232,249,0.8)] bg-cyan-900/20", 
             icon: "👑"
         }
@@ -27,7 +29,8 @@ export function getRank(profile: any): Rank {
         return {
             level: 7,
             name: "The Legend",
-            color: "border-yellow-400 text-yellow-400",
+            borderColor: "border-yellow-400",
+            textColor: "text-yellow-400",
             glow: "shadow-[0_0_15px_rgba(250,204,21,0.6)] bg-yellow-900/20", 
         }
     }
@@ -37,7 +40,8 @@ export function getRank(profile: any): Rank {
         return {
             level: 6,
             name: "The Headliner",
-            color: "border-fuchsia-500 text-fuchsia-400",
+            borderColor: "border-fuchsia-500",
+            textColor: "text-fuchsia-400",
             glow: "shadow-[0_0_10px_rgba(217,70,239,0.5)]",
         }
     }
@@ -47,8 +51,9 @@ export function getRank(profile: any): Rank {
         return {
             level: 5,
             name: "Party Animal",
-            color: "border-pink-500 text-pink-500",
-            glow: "border-2",
+            borderColor: "border-pink-500",
+            textColor: "text-pink-500",
+            glow: "border-2 shadow-pink-500/20",
         }
     }
 
@@ -57,7 +62,8 @@ export function getRank(profile: any): Rank {
         return {
             level: 4,
             name: "Vibe Manager",
-            color: "border-pink-300 text-pink-300",
+            borderColor: "border-pink-300",
+            textColor: "text-pink-300",
             glow: "",
         }
     }
@@ -67,7 +73,8 @@ export function getRank(profile: any): Rank {
         return {
             level: 3,
             name: "The Booker",
-            color: "border-blue-600 text-blue-400 font-bold",
+            borderColor: "border-blue-600",
+            textColor: "text-blue-400",
             glow: "",
         }
     }
@@ -77,7 +84,8 @@ export function getRank(profile: any): Rank {
         return {
             level: 2,
             name: "The Regular",
-            color: "border-blue-400 text-blue-400",
+            borderColor: "border-blue-400",
+            textColor: "text-blue-400",
             glow: "",
         }
     }
@@ -87,16 +95,32 @@ export function getRank(profile: any): Rank {
         return {
             level: 1,
             name: "The Roadie",
-            color: "border-cyan-600 text-cyan-600",
+            borderColor: "border-cyan-600",
+            textColor: "text-cyan-600",
             glow: "",
         }
     }
 
-    // LEVEL 0: TOURIST (Grijs)
+    // LEVEL 0: TOURIST (Grijs - iets lichter gemaakt voor zichtbaarheid)
     return {
         level: 0,
         name: "The Tourist",
-        color: "border-slate-600 text-slate-500",
+        borderColor: "border-slate-500",
+        textColor: "text-slate-500",
         glow: "",
     }
+}
+
+// --- TYPECASTING LOGICA ---
+export function getArchetype(profile: any, rsvpStats: { going: number, maybe: number, cant: number }): string {
+    const total = rsvpStats.going + rsvpStats.maybe + rsvpStats.cant
+    if (total === 0) return "De Nieuwkomer 🌱"
+
+    if (rsvpStats.maybe > 0 && (rsvpStats.maybe / total) > 0.4) return "De Eeuwige Twijfelaar 🤔"
+    if (rsvpStats.cant > 0 && (rsvpStats.cant / total) > 0.3) return "De Bankhanger 🛋️"
+    if (profile.messages_count > 50 && profile.events_created === 0) return "De Hype Man 📣"
+    if (profile.events_created > 5) return "De Regelneef 📅"
+    if (rsvpStats.going > 10 && (rsvpStats.going / total) > 0.8) return "De Front Row Fan 🤘"
+
+    return "De Muziekliefhebber 🎵"
 }

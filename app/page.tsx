@@ -9,6 +9,7 @@ import GroupSwitcher from '@/components/GroupSwitcher'
 import GroupHero from '@/components/GroupHero' 
 import NotificationDropdown from '@/components/NotificationDropdown'
 import { MessageCircle } from 'lucide-react'
+import GroupMembers from '@/components/GroupMembers' // Zorg dat deze import er staat!
 
 // Types definitions
 type Rsvp = {
@@ -89,9 +90,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // UPDATE 1: Haal ook jouw eigen stats op (voor NotificationDropdown etc)
   const { data: profile } = await supabase
     .from('profiles')
-    .select('avatar_url, full_name, address')
+    .select('avatar_url, full_name, address, xp_points, events_created, messages_count')
     .eq('id', user.id)
     .single()
 
@@ -138,6 +140,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   threeDaysAgoDate.setDate(threeDaysAgoDate.getDate() - 3);
   const threeDaysAgoTimestamp = threeDaysAgoDate.getTime();
 
+  // UPDATE 2: Haal de stats op van IEDEREEN die rsvp't
   let query = supabase
     .from('events')
     .select(`
@@ -146,7 +149,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         status,
         user_id,
         last_read_at, 
-        profiles ( full_name, avatar_url )
+        profiles ( full_name, avatar_url, xp_points, events_created, messages_count )
       ),
       rsvp_reactions (*)
     `)
@@ -205,12 +208,25 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
         
         <div className="max-w-2xl mx-auto">
             <GroupSwitcher groups={groups} />
+            
             {currentGroup && (
-                <GroupHero 
-                    group={currentGroup} 
-                    currentUserId={user.id} 
-                />
+                <div className="relative mb-6">
+                    {/* De GroupHero Banner */}
+                    <GroupHero 
+                        group={currentGroup} 
+                        currentUserId={user.id} 
+                    />
+                    
+                    {/* De Leden Knop (Rechtsboven over de banner heen) */}
+                    <div className="absolute top-8 right-20 z-20">
+                        <GroupMembers 
+                            groupId={currentGroup.id} 
+                            groupName={currentGroup.name} 
+                        />
+                    </div>
+                </div>
             )}
+
             {view !== 'history' && events && events.length > 0 && <ToggleMap events={events} />}
         </div>
 
@@ -272,14 +288,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
               const createdAt = new Date(event.created_at).getTime();
               const isNewEvent = createdAt > threeDaysAgoTimestamp && !myRsvp?.status;
 
-              // --- FIX: DEZE URL IS NU STANDAARD & VEILIG ---
-              const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.venue_name)}`;
+              const mapsUrl = `https://www.google.com/maps/search/?api=1&query=$${encodeURIComponent(event.venue_name)}`;
               const mapsLabel = event.venue_name; 
 
               const typeStyle = getEventTypeStyles(event.event_type || '')
               const cardStyle = getCardStyles(event.event_type || '')
 
-              // Security Check voor App Link
               const showChatLink = event.group_chat_link && (!event.group_id || myMemberGroupIds.includes(event.group_id));
 
               return (

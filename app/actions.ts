@@ -569,3 +569,33 @@ export async function unsubscribeUser(userId: string) {
   
     return { success: true }
 }
+// --- GROEP LEDEN OPHALEN ---
+export async function getGroupMembers(groupId: string) {
+  const supabase = await createClient()
+  
+  // We halen de members op, en via de relatie 'profiles' halen we de stats op
+  const { data, error } = await supabase
+    .from('group_members')
+    .select(`
+      user_id,
+      profiles (
+        full_name,
+        avatar_url,
+        xp_points,
+        events_created,
+        messages_count
+      )
+    `)
+    .eq('group_id', groupId)
+
+  if (error) {
+    console.error('Error fetching members:', error)
+    return []
+  }
+
+  // We schonen de data een beetje op zodat het makkelijker te gebruiken is
+  return data.map((member: any) => ({
+    id: member.user_id,
+    ...member.profiles
+  }))
+}
