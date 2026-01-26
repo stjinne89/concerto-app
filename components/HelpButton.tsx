@@ -4,8 +4,11 @@ import { Info } from 'lucide-react'
 
 export default function HelpButton() {
   const resetAndReload = () => {
-    localStorage.removeItem('hasSeenGamificationIntro_v1')
-    window.location.href = '/' // Ga naar home, waar de explainer popt
+    // 1. We verwijderen de JUISTE key (v5)
+    localStorage.removeItem('hasSeenAppTour_v5')
+    
+    // 2. We sturen de gebruiker naar home
+    window.location.href = '/' 
   }
 
   return (
