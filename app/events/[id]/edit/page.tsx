@@ -5,10 +5,13 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation' 
 import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, Trash2, Save, X, MessageCircle, Lock, AlertTriangle, RefreshCcw } from 'lucide-react'
 import Link from 'next/link'
+import { createClient } from '@/utils/supabase/client' // <--- TOEGEVOEGD
+import LineupManager from '@/components/LineupManager' // <--- TOEGEVOEGD
 
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const supabase = createClient() // <--- TOEGEVOEGD
 
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
@@ -16,6 +19,9 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
   
   // We moeten weten of dit event bij een groep hoort
   const [isGroupEvent, setIsGroupEvent] = useState(false)
+  
+  // State voor de line-up
+  const [performances, setPerformances] = useState<any[]>([]) // <--- TOEGEVOEGD
 
   const [formData, setFormData] = useState({
     title: '',
@@ -34,7 +40,20 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
   // 1. Data ophalen
   useEffect(() => {
     async function loadData() {
+        // A. Haal Event Data (Server Action)
         const data = await getEvent(id)
+        
+        // B. Haal Line-up Data (Client Side Supabase) <--- TOEGEVOEGD
+        const { data: acts } = await supabase
+            .from('performances')
+            .select('*')
+            .eq('event_id', id)
+            .order('start_time', { ascending: true })
+        
+        if (acts) {
+            setPerformances(acts)
+        }
+
         if (data) {
             setIsGroupEvent(!!data.group_id)
 
@@ -254,6 +273,12 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
                         className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
                     />
                 </div>
+
+                {/* --- HIER IS DE LINE-UP MANAGER TOEGEVOEGD --- */}
+                <LineupManager 
+                    eventId={id} 
+                    initialPerformances={performances} 
+                />
 
                 <div className="space-y-3 pt-2">
                     <div className="relative group">

@@ -273,7 +273,7 @@ export async function joinGroupWithCode(formData: FormData) {
   redirect(`/?group=${groupId}`)
 }
 
-// --- 7. OVERIGE (Scraping, etc.) ---
+// --- 7. SCRAPING (De Vernieuwde Versie) ---
 
 export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
@@ -287,23 +287,76 @@ export async function scrapeEventUrl(url: string) {
     const html = await response.text()
     const $ = cheerio.load(html)
 
+    // 1. BASIS: Haal data uit OpenGraph tags
     let title = $('meta[property="og:title"]').attr('content') || $('title').text()
-    let description = $('meta[property="og:description"]').attr('content')
+    let description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
     
-    let image = $('meta[property="og:image"]').attr('content') || 
-                $('meta[name="twitter:image"]').attr('content') ||
-                $('link[rel="image_src"]').attr('href');
+    let image_url = $('meta[property="og:image"]').attr('content') || 
+                    $('meta[name="twitter:image"]').attr('content') ||
+                    $('link[rel="image_src"]').attr('href');
 
+    let start_at = ''
+    let venue = ''
+    let lineup: string[] = []
+
+    // 2. GEAVANCEERD: Zoek naar JSON-LD data (Schema.org)
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const json = JSON.parse($(el).html() || '{}')
+        
+        const type = json['@type']
+        if (type === 'Event' || type === 'MusicEvent' || type === 'Festival' || type === 'Concert') {
+           
+           if (json.startDate) start_at = json.startDate
+
+           if (json.location && json.location.name) {
+               venue = json.location.name
+           } else if (json.location && typeof json.location === 'string') {
+               venue = json.location
+           }
+
+           if (json.image) {
+                if (Array.isArray(json.image)) {
+                    image_url = json.image[0]
+                } else if (typeof json.image === 'object' && json.image.url) {
+                    image_url = json.image.url
+                } else if (typeof json.image === 'string') {
+                    image_url = json.image
+                }
+           }
+
+           // LINE-UP Detectie
+           if (json.performer) {
+               const performers = Array.isArray(json.performer) ? json.performer : [json.performer]
+               performers.forEach((p: any) => {
+                   if (p.name) lineup.push(p.name)
+               })
+           } else if (json.subEvent) {
+               const subs = Array.isArray(json.subEvent) ? json.subEvent : [json.subEvent]
+               subs.forEach((s: any) => {
+                   if (s.name) lineup.push(s.name)
+                   if (s.performer && s.performer.name) lineup.push(s.performer.name)
+               })
+           }
+        }
+      } catch (e) {
+        // Negeren
+      }
+    })
+
+    // 3. OPSCHONEN
     title = title?.split('|')[0].trim() || ''
+    const uniqueLineup = [...new Set(lineup)]
 
     return {
       success: true,
       data: {
         title,
         description,
-        image_url: image, 
-        venue: '',
-        start_at: ''
+        image_url, 
+        venue,
+        start_at,
+        lineup: uniqueLineup 
       }
     }
 
@@ -311,55 +364,6 @@ export async function scrapeEventUrl(url: string) {
     console.error('Scraping failed:', error)
     return { success: false }
   }
-}
-
-export async function markAsRead(eventId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-
-  await supabase
-    .from('rsvps')
-    .update({ last_read_at: new Date().toISOString() })
-    .eq('event_id', eventId)
-    .eq('user_id', user.id)
-  
-  revalidatePath('/')
-}
-
-export async function updateAvatar(formData: FormData) {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return redirect('/login')
-
-  const file = formData.get('avatar') as File
-  if (!file) return
-
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${user.id}-${Date.now()}.${fileExt}`
-
-  const { error: uploadError } = await supabase
-    .storage
-    .from('avatars')
-    .upload(fileName, file, { upsert: true })
-
-  if (uploadError) {
-    console.error('Upload error:', uploadError)
-    throw new Error('Kon afbeelding niet uploaden')
-  }
-
-  const { data: { publicUrl } } = supabase
-    .storage
-    .from('avatars')
-    .getPublicUrl(fileName)
-
-  await supabase
-    .from('profiles')
-    .update({ avatar_url: publicUrl })
-    .eq('id', user.id)
-
-  revalidatePath('/profile')
 }
 
 // --- 8. GROEP PROFIEL & MUZIEK ---
@@ -410,7 +414,6 @@ export async function addMusic(formData: FormData) {
     const groupId = formData.get('group_id') as string
     const url = formData.get('url') as string
     
-    // Simpele check of het een spotify link is
     if (!url.includes('spotify.com')) return
 
     await supabase.from('group_music').insert({
@@ -434,13 +437,9 @@ export async function getGroupMusic(groupId: string) {
     return data || []
 }
 
-// ==========================================
-// 🚀 NIEUWE FUNCTIES VOOR FASE 4 (GAMIFICATION)
-// ==========================================
+// --- 9. GAMIFICATION & INTERACTIE ---
 
-// --- GAMIFICATION ENGINE 🏆 ---
 export async function incrementXP(userId: string, amount: number, type: 'event' | 'rsvp' | 'message') {
-    // Gebruik admin client voor zekerheid
     const supabase = createAdminClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -476,7 +475,8 @@ export async function incrementXP(userId: string, amount: number, type: 'event' 
 }
 
 // --- RSVP MET PUNTEN ---
-export async function toggleRsvp(eventId: string, status: 'going' | 'maybe' | 'cant') {
+// LET OP: status is 'interested' ipv 'maybe', consistent met Frontend
+export async function toggleRsvp(eventId: string, status: 'going' | 'interested' | 'cant') {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -497,7 +497,7 @@ export async function toggleRsvp(eventId: string, status: 'going' | 'maybe' | 'c
         user_id: user.id,
         status: status,
         last_read_at: new Date().toISOString()
-      })
+      }, { onConflict: 'event_id, user_id' })
   
     if (error) {
         console.error('RSVP Error:', error)
@@ -506,27 +506,37 @@ export async function toggleRsvp(eventId: string, status: 'going' | 'maybe' | 'c
   
     // 3. Punten uitdelen
     if (!existing) {
-        // Nieuwe reactie
         if (status === 'going') await incrementXP(user.id, 15, 'rsvp')
-        if (status === 'maybe') await incrementXP(user.id, 5, 'rsvp')
+        if (status === 'interested') await incrementXP(user.id, 5, 'rsvp')
     } else if (existing.status !== status) {
-        // Upgrade
         if (status === 'going' && existing.status !== 'going') await incrementXP(user.id, 15, 'rsvp')
-        if (status === 'maybe' && existing.status === 'cant') await incrementXP(user.id, 5, 'rsvp')
+        if (status === 'interested' && existing.status === 'cant') await incrementXP(user.id, 5, 'rsvp')
     }
   
     revalidatePath('/')
     return { success: true }
 }
 
-// --- CHAT MET PUNTEN ---
+export async function markAsRead(eventId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase
+    .from('rsvps')
+    .update({ last_read_at: new Date().toISOString() })
+    .eq('event_id', eventId)
+    .eq('user_id', user.id)
+  
+  revalidatePath('/')
+}
+
 export async function sendChatMessage(eventId: string, message: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     if (!message.trim()) return
 
-    // 1. Opslaan
     const { error } = await supabase
         .from('event_chats')
         .insert({
@@ -537,20 +547,52 @@ export async function sendChatMessage(eventId: string, message: string) {
     
     if (error) return { success: false }
 
-    // 2. Notificatie trigger
     await supabase
         .from('events')
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', eventId)
 
-    // 3. Punten (+2 XP)
     await incrementXP(user.id, 2, 'message')
 
     revalidatePath('/')
     return { success: true }
 }
 
-// --- NEWSLETTER UNSUBSCRIBE ---
+export async function updateAvatar(formData: FormData) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const file = formData.get('avatar') as File
+  if (!file) return
+
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${user.id}-${Date.now()}.${fileExt}`
+
+  const { error: uploadError } = await supabase
+    .storage
+    .from('avatars')
+    .upload(fileName, file, { upsert: true })
+
+  if (uploadError) {
+    console.error('Upload error:', uploadError)
+    throw new Error('Kon afbeelding niet uploaden')
+  }
+
+  const { data: { publicUrl } } = supabase
+    .storage
+    .from('avatars')
+    .getPublicUrl(fileName)
+
+  await supabase
+    .from('profiles')
+    .update({ avatar_url: publicUrl })
+    .eq('id', user.id)
+
+  revalidatePath('/profile')
+}
+
 export async function unsubscribeUser(userId: string) {
     const supabaseAdmin = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -569,11 +611,12 @@ export async function unsubscribeUser(userId: string) {
   
     return { success: true }
 }
-// --- GROEP LEDEN OPHALEN ---
+
+// --- 10. OVERIGE GETTERS ---
+
 export async function getGroupMembers(groupId: string) {
   const supabase = await createClient()
   
-  // We halen de members op, en via de relatie 'profiles' halen we de stats op
   const { data, error } = await supabase
     .from('group_members')
     .select(`
@@ -593,7 +636,6 @@ export async function getGroupMembers(groupId: string) {
     return []
   }
 
-  // We schonen de data een beetje op zodat het makkelijker te gebruiken is
   return data.map((member: any) => ({
     id: member.user_id,
     ...member.profiles

@@ -7,7 +7,6 @@ import AvatarUpload from '@/components/AvatarUpload'
 import SecretDoor from '@/components/SecretDoor'
 import HelpButton from '@/components/HelpButton'
 import { getRank } from '@/utils/gamification' // Let op: getArchetype weggehaald hier!
-import HiddenRanking from '@/components/HiddenRanking'
 import { ChevronRight, Lock } from 'lucide-react'
 import UserArchetypeCard from '@/components/UserArchetypeCard' // <--- NIEUW
 
@@ -85,7 +84,7 @@ export default async function ProfilePage() {
             </div>
             
            <h1 className="text-3xl font-black text-white tracking-tight mb-1 font-serif">{profile?.full_name}</h1>
-<p className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-6">Level {rank.level}</p>
+<p className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-6"></p>
 
 {/* NIEUWE TYPECASTING CARD */}
 <UserArchetypeCard analytics={analytics} />

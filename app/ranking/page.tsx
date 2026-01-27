@@ -5,7 +5,21 @@ import { Lock, ChevronLeft, Trophy, Calendar, MessageCircle, Star, Crown, Medal,
 import GamifiedAvatar from '@/components/GamifiedAvatar'
 import { getRank } from '@/utils/gamification'
 
+// NIEUW: Importeer de geavanceerde Typecasting logica
+import { calculateCoordinates } from '@/utils/typecasting/calculator'
+import { getArchetype } from '@/utils/typecasting/dictionary'
+
 const UNLOCK_THRESHOLD = 1000
+
+// Helper voor de kleurtjes uit dictionary.ts
+const BADGE_COLORS: Record<string, string> = {
+  gray: 'text-slate-500 bg-slate-500/10 border-slate-500/20',
+  red: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+  orange: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+  green: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+  purple: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+  gold: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+}
 
 export default async function RankingPage() {
   const supabase = await createClient()
@@ -28,7 +42,6 @@ export default async function RankingPage() {
   let leaderboard: any[] = []
   
   if (isUnlocked) {
-    // FIX: We voegen !user_id toe om Supabase te vertellen WELKE kolom de koppeling is
     const { data, error } = await supabase
       .from('profiles')
       .select(`
@@ -43,11 +56,8 @@ export default async function RankingPage() {
       `)
       .order('xp_points', { ascending: false })
       .limit(50)
-      
-    if (error) {
-       console.error("❌ FOUT BIJ RANKING:", JSON.stringify(error, null, 2))
-    }
 
+    if (error) console.error("Error fetching leaderboard:", error)
     leaderboard = data || []
   }
 
@@ -71,7 +81,7 @@ export default async function RankingPage() {
             <Trophy className="text-yellow-500" /> Hall of Fame
           </h1>
           <p className="text-slate-400 text-xs font-bold tracking-widest uppercase">
-            De ultieme ranglijst
+            Concerto leden ranked
           </p>
         </div>
       </div>
@@ -132,13 +142,30 @@ export default async function RankingPage() {
                      // Counts veilig uitlezen
                      const goingCount = user.rsvps?.filter((r: any) => r.status === 'going').length || 0
                      const interestedCount = user.rsvps?.filter((r: any) => r.status === 'interested').length || 0
-                     const notGoingCount = user.rsvps?.filter((r: any) => r.status === 'not_going').length || 0
+                     const notGoingCount = user.rsvps?.filter((r: any) => r.status === 'cant' || r.status === 'not_going').length || 0
                      
-                     // Rating count fix: Supabase geeft vaak een array terug bij counts
+                     // Rating count fix
                      let ratingsCount = 0
                      if (Array.isArray(user.event_ratings)) {
                          ratingsCount = user.event_ratings[0]?.count || 0
                      }
+
+                     // --- HIER ZIT DE NIEUWE MAGIE ---
+                     // We bouwen het stats object na zoals 'calculator.ts' dat verwacht
+                     const stats = {
+                         rsvp_going_count: goingCount,
+                         rsvp_maybe_count: interestedCount,
+                         flake_count: 0, // Deze hebben we helaas niet in deze query, default naar 0
+                         chat_messages_count: user.messages_count || 0,
+                         ratings_given_count: ratingsCount
+                     }
+                     
+                     // 1. Bereken coördinaten
+                     const coords = calculateCoordinates(stats)
+                     // 2. Zoek juiste archetype in dictionary
+                     const archetype = getArchetype(coords)
+                     // 3. Kies juiste kleur
+                     const badgeStyle = BADGE_COLORS[archetype.badge_color] || BADGE_COLORS.gray
 
                      return (
                        <tr key={user.id} className={`hover:bg-white/5 transition-colors ${isMe ? 'bg-violet-500/10' : ''}`}>
@@ -156,8 +183,17 @@ export default async function RankingPage() {
                                   <div className={`font-bold text-sm truncate max-w-[120px] sm:max-w-none ${isMe ? 'text-violet-300' : 'text-white'}`}>
                                     {user.full_name}
                                   </div>
-                                  <div className={`text-[9px] inline-block px-1.5 rounded border mt-0.5 ${rank.borderColor} ${rank.textColor} bg-slate-950/50`}>
-                                     {rank.name}
+                                  
+                                  <div className="flex flex-col items-start gap-1 mt-1">
+                                      {/* Rank Badge (Level) */}
+                                      <div className={`text-[9px] inline-block px-1.5 rounded border ${rank.borderColor} ${rank.textColor} bg-slate-950/50`}>
+                                        {rank.name}
+                                      </div>
+                                      
+                                      {/* Archetype Badge (Typecasting) */}
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeStyle}`}>
+                                        {archetype.name}
+                                      </span>
                                   </div>
                                </div>
                             </div>
