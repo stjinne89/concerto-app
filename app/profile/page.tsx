@@ -84,11 +84,11 @@ export default async function ProfilePage() {
                  )}
             </div>
             
-            <h1 className="text-3xl font-black text-white tracking-tight mb-1 font-serif">{profile?.full_name}</h1>
-            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-6">{rank.title}</p>
-            
-            {/* NIEUWE TYPECASTING CARD */}
-            <UserArchetypeCard analytics={analytics} />
+           <h1 className="text-3xl font-black text-white tracking-tight mb-1 font-serif">{profile?.full_name}</h1>
+<p className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-6">Level {rank.level}</p>
+
+{/* NIEUWE TYPECASTING CARD */}
+<UserArchetypeCard analytics={analytics} />
 
         </div>
 
