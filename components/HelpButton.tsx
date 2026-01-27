@@ -17,7 +17,7 @@ export default function HelpButton() {
         className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-violet-400 transition-colors mt-8 mx-auto"
     >
         <Info size={14} />
-        Hoe werkt dit systeem?
+        Hoe werkt de Concerto App?
     </button>
   )
 }

@@ -47,27 +47,46 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
   const rsvps = allRsvps as RsvpWithProfile[]
   const EMOJI_OPTIONS = ['🔥', '🍻', '🎉', '❤️', '🫡']
 
-  // --- RSVP LOGICA ---
+// --- RSVP LOGICA (UPDATED) ---
   const handleRsvp = async (newStatus: string) => {
     if (loading) return
     setLoading(true)
     
     try {
+      // SCENARIO 1: Je klikt op wat je al hebt -> VERWIJDEREN (Toggle Off)
       if (myStatus === newStatus) {
-          const { error } = await supabase.from('rsvps').delete().eq('event_id', eventId).eq('user_id', currentUserId)
+          const { error } = await supabase
+            .from('rsvps')
+            .delete()
+            .eq('event_id', eventId)
+            .eq('user_id', currentUserId)
+          
           if (error) throw error
-      } else {
-          const { error } = await supabase.from('rsvps').upsert({
-              event_id: eventId, user_id: currentUserId, status: newStatus
+      } 
+      // SCENARIO 2: Je verandert van status -> OVERSCHRIJVEN (Upsert)
+      else {
+          // Upsert werkt alleen goed als er een UNIQUE constraint is op (event_id, user_id)
+          const { error } = await supabase
+            .from('rsvps')
+            .upsert({
+              event_id: eventId, 
+              user_id: currentUserId, 
+              status: newStatus
             }, { onConflict: 'event_id, user_id' })
+            
           if (error) throw error
       }
+      
+      // Forceer een harde refresh zodat de UI de nieuwe status uit de DB haalt
       router.refresh()
+      
     } catch (error) {
       console.error('RSVP Error:', error)
+      alert('Er ging iets mis met het opslaan van je keuze.')
     } finally {
       setLoading(false)
-      setIsOpen(false)
+      // Laat het menu open staan of dicht, wat je wilt. (isOpen false voelt logischer)
+      // setIsOpen(false) 
     }
   }
 

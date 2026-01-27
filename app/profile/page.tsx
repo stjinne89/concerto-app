@@ -5,8 +5,11 @@ import { ArrowLeft, Save, Star, Activity, Trophy } from 'lucide-react'
 import CalendarSubscription from '@/components/CalendarSubscription'
 import AvatarUpload from '@/components/AvatarUpload'
 import SecretDoor from '@/components/SecretDoor'
-import HelpButton from '@/components/HelpButton' // <--- DEZE WAS IK VERGETEN!
-import { getRank, getArchetype } from '@/utils/gamification'
+import HelpButton from '@/components/HelpButton'
+import { getRank } from '@/utils/gamification' // Let op: getArchetype weggehaald hier!
+import HiddenRanking from '@/components/HiddenRanking'
+import { ChevronRight, Lock } from 'lucide-react'
+import UserArchetypeCard from '@/components/UserArchetypeCard' // <--- NIEUW
 
 export default async function ProfilePage() {
   const supabase = await createClient()
@@ -14,29 +17,26 @@ export default async function ProfilePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 1. Haal profiel op MET stats EN RATINGS_COUNT
+  // 1. Haal profiel data
   const { data: profile } = await supabase
     .from('profiles')
     .select('full_name, avatar_url, xp_points, events_created, messages_count, ratings_count')
     .eq('id', user.id)
     .single()
+  
+  const currentXp = profile?.xp_points || 0
 
-  // 2. Haal RSVP stats op
-  const { data: rsvps } = await supabase
-    .from('rsvps')
-    .select('status')
+  // 2. NIEUW: Haal de Analytics op voor het Typecasting systeem
+  // We gebruiken single() maar vangen errors op voor als de tabel nog leeg is voor oude users
+  const { data: analytics } = await supabase
+    .from('user_analytics')
+    .select('*')
     .eq('user_id', user.id)
+    .maybeSingle() // maybeSingle crasht niet als er geen row is (geeft null)
 
-  const rsvpStats = {
-      going: rsvps?.filter((r: any) => r.status === 'going').length || 0,
-      maybe: rsvps?.filter((r: any) => r.status === 'interested').length || 0,
-      cant: rsvps?.filter((r: any) => r.status === 'cant').length || 0
-  }
-
-  // 3. Bereken Rank & Archetype
+  // 3. Bereken Rank (Level systeem blijft bestaan naast types)
   const rank = getRank(profile)
-  const archetype = getArchetype(profile, rsvpStats)
-
+  
   // Helper om background kleur te bepalen uit border kleur
   const bgGlowColor = rank.borderColor.replace('border-', 'bg-')
 
@@ -65,8 +65,7 @@ export default async function ProfilePage() {
         </Link>
 
         {/* --- GAMIFICATION HEADER --- */}
-        <div className="text-center mb-10">
-            
+        <div className="text-center mb-8">
             <div className="flex justify-center mb-4 relative">
                  <div className={`p-1.5 rounded-full ${rank.borderColor} border-2 ${rank.glow} transition-all duration-500`}>
                     <div className="rounded-full overflow-hidden w-[150px] h-[150px]">
@@ -85,11 +84,11 @@ export default async function ProfilePage() {
                  )}
             </div>
             
-            <h1 className="text-3xl font-black text-white tracking-tight mb-2 font-serif">{profile?.full_name}</h1>
+            <h1 className="text-3xl font-black text-white tracking-tight mb-1 font-serif">{profile?.full_name}</h1>
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-6">{rank.title}</p>
             
-            <div className={`text-sm font-bold uppercase tracking-widest ${rank.textColor}`}>
-                "{archetype}"
-            </div>
+            {/* NIEUWE TYPECASTING CARD */}
+            <UserArchetypeCard analytics={analytics} />
 
         </div>
 
@@ -116,6 +115,44 @@ export default async function ProfilePage() {
         <div className="mb-8">
              <SecretDoor ratingsCount={profile?.ratings_count || 0} />
         </div>
+                
+        {/* RANKING TEASER */}
+          <div className="animate-in slide-in-from-bottom-4 duration-700 mb-8">
+             {currentXp >= 300 ? (
+                <Link href="/ranking">
+                  <div className="group relative bg-gradient-to-r from-violet-900/50 to-slate-900 border border-violet-500/30 rounded-2xl p-4 flex items-center justify-between hover:border-violet-500/60 transition-all cursor-pointer overflow-hidden">
+                      <div className="absolute inset-0 bg-violet-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="flex items-center gap-4 relative z-10">
+                          <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(139,92,246,0.2)]">
+                              <Trophy className="text-yellow-400" size={24} />
+                          </div>
+                          <div>
+                              <h3 className="font-bold text-white text-lg group-hover:text-violet-200 transition-colors">Hall of Fame</h3>
+                              <p className="text-xs text-slate-400">Bekijk de ranglijst & statistieken</p>
+                          </div>
+                      </div>
+                      <div className="bg-violet-600/20 p-2 rounded-full border border-violet-500/30 group-hover:bg-violet-600 group-hover:text-white transition-all text-violet-300">
+                          <ChevronRight size={20} />
+                      </div>
+                  </div>
+                </Link>
+             ) : (
+                <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-4 flex items-center gap-4 opacity-75 select-none">
+                    <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center border border-white/10">
+                        <Lock className="text-slate-500" size={20} />
+                    </div>
+                    <div className="flex-1">
+                        <h3 className="font-bold text-slate-300">Ranglijst Vergrendeld</h3>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full mt-2 overflow-hidden border border-white/5">
+                           <div className="h-full bg-slate-600" style={{ width: `${(currentXp / 300) * 100}%` }} />
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                            Nog {300 - currentXp} XP tot unlock
+                        </p>
+                    </div>
+                </div>
+             )}
+          </div>
 
         {/* AGENDA ABONNEMENT */}
         <div className="mb-6">
