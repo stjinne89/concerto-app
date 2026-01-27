@@ -116,7 +116,7 @@ export default function UserArchetypeCard({ analytics }: { analytics: any }) {
 
              {/* As 3: Kritiek (CYAAN / SKY) */}
              <div className="flex flex-col gap-1.5">
-                <span className="text-[9px] font-bold uppercase tracking-wider opacity-80 text-right text-cyan-300">Kritiek</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider opacity-80 text-right text-cyan-300">Rate</span>
                 <div className="h-1.5 w-full bg-slate-900/60 rounded-full overflow-hidden backdrop-blur-sm border border-white/5">
                     <div 
                         className="h-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.6)] transition-all duration-1000 ml-auto" 
