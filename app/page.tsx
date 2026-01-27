@@ -199,25 +199,37 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           Concerto
         </h1>
         
-        {/* RECHTS: NOTIFICATIES EN DISCOVER KNOP */}
         <div className="flex items-center gap-3">
           
-          {/* NIEUW: DISCOVER KNOP (Tinder voor Events) */}
           <Link 
             href="/discover" 
-            className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white rounded-full transition-colors relative border border-white/5"
+            className="w-10 h-10 flex items-center justify-center relative group transition-transform"
             title="Ontdek nieuwe events"
           >
-            <span className="text-xl leading-none pt-0.5">🔥</span>
-            {/* Rood bolletje voor actie */}
-            <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-950 animate-pulse"></span>
+            <img 
+                src="/images/icon-discover.png" 
+                alt="Discover" 
+                className="w-full h-full object-contain drop-shadow-[0_0_12px_rgba(139,92,246,0.8)] group-hover:scale-110 transition-transform"
+            />
+            
+            <span className="absolute top-1 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border border-slate-900 animate-pulse shadow-md"></span>
           </Link>
 
           <NotificationDropdown 
-              profile={profile} 
-              events={events}
-              currentUserId={user.id} 
-          />
+    profile={{
+      // 1. Zorg dat je niet spread op null (gebruik een leeg object of fallback values)
+      ...(profile || { 
+          full_name: 'Gast', 
+          xp_points: 0, 
+          events_created: 0, 
+          messages_count: 0 
+      }),
+      // 2. Gebruik '?.' (optional chaining) om veilig de url te lezen
+      avatar_url: profile?.avatar_url || '/images/avatar-placeholder.png'
+    }}
+    events={events}
+    currentUserId={user.id}
+/>
         </div>
       </nav>
 
@@ -228,13 +240,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
             
             {currentGroup && (
                 <div className="relative mb-6">
-                    {/* De GroupHero Banner */}
                     <GroupHero 
                         group={currentGroup} 
                         currentUserId={user.id} 
                     />
                     
-                    {/* De Leden Knop (Rechtsboven over de banner heen) */}
                     <div className="absolute top-8 right-20 z-20">
                         <GroupMembers 
                             groupId={currentGroup.id} 
@@ -324,40 +334,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                   }`}
                 >
                   
-                  {event.image_url ? (
-                      <div className="h-40 w-full relative overflow-hidden bg-slate-800">
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 opacity-90" />
-                          <img 
-                              src={event.image_url} 
-                              alt={event.title} 
-                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                          />
-                          
-                          <div className="absolute top-4 left-4 z-20 flex gap-2">
-                               <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border backdrop-blur-md shadow-lg ${view === 'history' ? 'text-slate-400 border-slate-600 bg-slate-900/80' : typeStyle}`}>
-                                {event.event_type}
+                  {/* HIER IS DE FIX: ALTIJD HET PLAATJE TONEN (OF DE PLACEHOLDER) */}
+                  <div className="h-40 w-full relative overflow-hidden bg-slate-800">
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 opacity-90" />
+                      
+                      {/* Als image_url bestaat, gebruik die. Anders de placeholder. */}
+                      <img 
+                          src={event.image_url || '/images/event-placeholder.png'} 
+                          alt={event.title} 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                      />
+                      
+                      <div className="absolute top-4 left-4 z-20 flex gap-2">
+                           <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border backdrop-blur-md shadow-lg ${view === 'history' ? 'text-slate-400 border-slate-600 bg-slate-900/80' : typeStyle}`}>
+                            {event.event_type || 'Event'}
+                          </span>
+                          {isNewEvent && (
+                              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/80 text-white border border-emerald-500/50 backdrop-blur-md animate-pulse shadow-lg">
+                                  Nieuw
                               </span>
-                              {isNewEvent && (
-                                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/80 text-white border border-emerald-500/50 backdrop-blur-md animate-pulse shadow-lg">
-                                      Nieuw
-                                  </span>
-                              )}
-                          </div>
+                          )}
                       </div>
-                  ) : (
-                      <div className="pt-6 px-6 flex justify-between items-start">
-                           <div className="flex gap-2">
-                              <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${view === 'history' ? 'text-slate-500 border-slate-700 bg-slate-800' : typeStyle}`}>
-                                {event.event_type}
-                              </span>
-                              {isNewEvent && (
-                                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
-                                      Nieuw
-                                  </span>
-                              )}
-                          </div>
-                      </div>
-                  )}
+                  </div>
 
                   {isCreator && (
                      <Link 
@@ -368,7 +366,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                      </Link>
                   )}
 
-                  <div className={`p-6 flex-1 flex flex-col ${event.image_url ? 'pt-2' : ''}`}>
+                  <div className="p-6 flex-1 flex flex-col pt-2">
                     
                     <div className="flex gap-5 items-start mb-6">
                       <div className={`border rounded-2xl p-3 min-w-[75px] text-center flex flex-col justify-center h-full ${view === 'history' ? 'bg-white/5 border-white/5 text-slate-500' : 'bg-white/5 border-white/10'}`}>
@@ -452,7 +450,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                                <EventRatingControl 
                                   eventId={event.id}
                                   userId={user.id}
-                                  eventName={event.title} // <--- NAAM TOEGEVOEGD!
+                                  eventName={event.title} 
                                   eventType={event.event_type || 'default'}
                                   allRatings={event.event_ratings || []}
                                   initialRating={event.event_ratings?.find((r: any) => r.user_id === user.id) || null}

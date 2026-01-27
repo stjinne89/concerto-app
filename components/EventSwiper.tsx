@@ -22,15 +22,25 @@ export default function EventSwiper({ initialEvents, userId }: { initialEvents: 
     // Als alles op is
     if (events.length === 0) {
         return (
-            <div className="text-center animate-in zoom-in duration-500">
-                <div className="text-6xl mb-4">🎉</div>
+            <div className="text-center animate-in zoom-in duration-500 flex flex-col items-center">
+                
+                {/* NIEUW: HET GROTE PLAATJE */}
+                <div className="w-48 h-48 mb-6 relative">
+                    <div className="absolute inset-0 bg-violet-500/20 blur-3xl rounded-full" /> {/* Achtergrond gloed */}
+                    <img 
+                        src="/images/state-caught-up.png" 
+                        alt="Helemaal bij" 
+                        className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_20px_rgba(124,58,237,0.4)]"
+                    />
+                </div>
+
                 <h2 className="text-2xl font-black text-white mb-2">Helemaal bij!</h2>
                 <p className="text-slate-500 mb-8 max-w-xs mx-auto">
                     Je hebt alle events bekeken. Tijd om je agenda te checken of zelf iets te organiseren.
                 </p>
                 <Link 
                     href="/" 
-                    className="bg-white text-slate-950 px-8 py-4 rounded-full font-bold uppercase tracking-widest hover:scale-105 transition-transform"
+                    className="bg-white text-slate-950 px-8 py-4 rounded-full font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]"
                 >
                     Terug naar Home
                 </Link>

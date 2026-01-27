@@ -1,90 +1,114 @@
 'use client'
 
 import { useState } from 'react'
+import { createClient } from '@/utils/supabase/client'
+import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
+// Import WoepIcon is verwijderd, we doen het inline!
 
-// Jouw tijdelijke Woep vorm (totdat je de echte SVG hebt)
-const WOEP_PATH = "M12 2C8 2 2 8 2 13c0 5.5 4.5 10 10 10s10-4.5 10-10C22 8 16 2 12 2zM12 21c-4.4 0-8-3.6-8-8 0-4 4.8-8.8 8-15.8 3.2 7 8 11.8 8 15.8 0 4.4-3.6 8-8 8z"
-
-type Props = {
-    value: number // Score van 0 tot 10
-    onChange?: (val: number) => void
-    readOnly?: boolean
-    size?: number
+interface RatingProps {
+  eventId: string
+  userId: string
+  eventName: string
+  eventType: string
+  allRatings: any[]
+  initialRating: any | null
+  isAttending: boolean
 }
 
-export default function WoepRating({ value, onChange, readOnly = false, size = 32 }: Props) {
-    const [hoverValue, setHoverValue] = useState<number | null>(null)
+export default function WoepRating({ 
+  eventId, userId, eventName, initialRating, isAttending 
+}: RatingProps) {
+  const [rating, setRating] = useState<number>(initialRating?.rating || 0)
+  const [hoverRating, setHoverRating] = useState<number>(0)
+  const [loading, setLoading] = useState(false)
+  
+  const supabase = createClient()
+  const router = useRouter()
 
-    // Helper: Bepaal hoeveel % het icoontje gevuld moet zijn
-    // Index 0 = punten 1 & 2
-    // Index 1 = punten 3 & 4
-    // etc.
-    const getFillPercent = (index: number, currentVal: number) => {
-        const iconValue = (index + 1) * 2 // Max waarde van dit icoon (bijv 2, 4, 6)
-        
-        if (currentVal >= iconValue) return 100 // Helemaal vol
-        if (currentVal === iconValue - 1) return 50 // Half vol
-        return 0 // Leeg
+  const handleRate = async (score: number) => {
+    setLoading(true)
+    setRating(score) // Direct feedback
+
+    try {
+      const { error } = await supabase
+        .from('event_ratings')
+        .upsert({
+          event_id: eventId,
+          user_id: userId,
+          rating: score
+        }, { onConflict: 'event_id, user_id' })
+
+      if (error) throw error
+      
+      router.refresh()
+    } catch (error) {
+      console.error('Error rating:', error)
+    } finally {
+      setLoading(false)
     }
+  }
 
-    // Handelt de muisbeweging af om te zien of we links of rechts zitten
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>, index: number) => {
-        if (readOnly) return
+  if (!isAttending) return null
 
-        const { left, width } = e.currentTarget.getBoundingClientRect()
-        const x = e.clientX - left
-        
-        // Als we op de linkerhelft zitten: punt is (index * 2) + 1
-        // Als we rechts zitten: punt is (index * 2) + 2
-        const isLeftHalf = x < width / 2
-        const points = (index * 2) + (isLeftHalf ? 1 : 2)
-        
-        setHoverValue(points)
-    }
+  return (
+    <div className="bg-slate-900/50 p-4 rounded-2xl border border-white/5">
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+            Geef een WoepScore
+        </span>
+        {loading && <Loader2 size={14} className="animate-spin text-violet-500" />}
+      </div>
 
-    const displayValue = hoverValue !== null ? hoverValue : value
-
-    return (
-        <div className="flex gap-1.5" onMouseLeave={() => !readOnly && setHoverValue(null)}>
-            {[0, 1, 2, 3, 4].map((index) => {
-                const fill = getFillPercent(index, displayValue)
-                
-                return (
-                    <div 
-                        key={index}
-                        className={`relative ${readOnly ? '' : 'cursor-pointer hover:scale-110 transition-transform'}`}
-                        style={{ width: size, height: size }}
-                        onClick={() => !readOnly && hoverValue && onChange?.(hoverValue)}
-                        onMouseMove={(e) => handleMouseMove(e, index)}
-                    >
-                        <svg 
-                            viewBox="0 0 24 24" 
-                            className="w-full h-full drop-shadow-sm"
-                        >
-                            {/* Achtergrond (Grijs/Leeg) */}
-                            <path d={WOEP_PATH} className="fill-slate-800 stroke-slate-600 stroke-1" />
-                            
-                            {/* Voorgrond (Gekleurd) */}
-                            <defs>
-                                <clipPath id={`clip-${index}-${fill}`}>
-                                    <rect x="0" y="0" width={`${fill}%`} height="100%" />
-                                </clipPath>
-                                <linearGradient id="woepGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#a78bfa" /> {/* Violet-400 */}
-                                    <stop offset="100%" stopColor="#7c3aed" /> {/* Violet-600 */}
-                                </linearGradient>
-                            </defs>
-                            
-                            <path 
-                                d={WOEP_PATH} 
-                                fill="url(#woepGradient)" 
-                                clipPath={`url(#clip-${index}-${fill})`}
-                                className="transition-all duration-100" // Snellere animatie voor snappy gevoel
-                            />
-                        </svg>
-                    </div>
-                )
-            })}
-        </div>
-    )
+      {/* De Rating Container */}
+      <div className="flex justify-between gap-1 h-10 items-center">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => {
+          // Is dit bolletje actief (geselecteerd of gehovered)?
+          const isActive = score <= (hoverRating || rating)
+          
+          return (
+            <button
+              key={score}
+              onClick={() => handleRate(score)}
+              onMouseEnter={() => setHoverRating(score)}
+              onMouseLeave={() => setHoverRating(0)}
+              className="flex-1 h-full flex items-center justify-center focus:outline-none group relative"
+            >
+              {/* HIER ZIT DE MAGIE: HET RONDJE (DE "O") 
+                  We tekenen dit gewoon met CSS (Tailwind classes)
+              */}
+              <div 
+                className={`
+                    rounded-full border-2 transition-all duration-300 ease-out
+                    ${isActive 
+                        ? 'w-3 h-3 bg-violet-500 border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.6)] scale-125' // Actief: Gevuld, Gloed, Groter
+                        : 'w-2.5 h-2.5 bg-transparent border-slate-600 opacity-40 group-hover:border-slate-400 group-hover:opacity-100' // Inactief: Leeg, Grijs
+                    }
+                `}
+              />
+              
+              {/* Tooltip met cijfer (verschijnt alleen bij hoveren) */}
+              {hoverRating === score && (
+                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-violet-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg animate-in fade-in slide-in-from-bottom-2 z-10">
+                      {score}
+                  </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+      
+      {/* Feedback tekst onderaan */}
+      <div className="text-center mt-1 h-4">
+        {rating > 0 && (
+            <span className="text-xs font-bold text-violet-300 animate-in fade-in">
+                {rating === 10 ? "LEGENDARISCH! 🤯" : 
+                 rating >= 8 ? "Geweldig! 🔥" : 
+                 rating >= 6 ? "Was leuk 👍" : 
+                 "Mwah... 😐"}
+            </span>
+        )}
+      </div>
+    </div>
+  )
 }

@@ -29,7 +29,7 @@ export default function GroupMembers({ groupId, groupName }: { groupId: string, 
       {/* 1. DE KNOP */}
       <button 
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-full text-xs font-bold uppercase tracking-widest text-slate-300 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-full text-xs font-bold uppercase tracking-widest text-slate-300 transition-colors shadow-lg"
       >
         <Users size={14} />
         Leden
@@ -74,9 +74,16 @@ export default function GroupMembers({ groupId, groupName }: { groupId: string, 
                     return (
                       <div key={member.id} className="flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl transition-colors">
                         
-                        {/* DE GAMIFIED AVATAR */}
+                        {/* DE GAMIFIED AVATAR (Met Fallback Fix) */}
                         <div className="shrink-0">
-                            <GamifiedAvatar profile={member} size="md" />
+                            <GamifiedAvatar 
+                                profile={{
+                                    ...member,
+                                    // HIER IS DE FIX: Als avatar leeg is, gebruik placeholder
+                                    avatar_url: member.avatar_url || '/images/avatar-placeholder.png'
+                                }} 
+                                size="md" 
+                            />
                         </div>
 
                         <div className="flex-1 min-w-0">
