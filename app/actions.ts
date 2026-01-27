@@ -269,6 +269,8 @@ export async function joinGroupWithCode(formData: FormData) {
     .insert({ group_id: groupId, user_id: user.id })
     .select()
 
+  await incrementXP(user.id, 10, 'rsvp') // We hergebruiken 'rsvp' type of maken een nieuwe
+
   revalidatePath('/')
   redirect(`/?group=${groupId}`)
 }
