@@ -8,9 +8,9 @@ import ScrollToTop from '@/components/ScrollToTop'
 import GroupSwitcher from '@/components/GroupSwitcher'
 import GroupHero from '@/components/GroupHero' 
 import NotificationDropdown from '@/components/NotificationDropdown'
-import { MessageCircle } from 'lucide-react'
 import GroupMembers from '@/components/GroupMembers'
 import EventRatingControl from '@/components/EventRatingControl'
+import { MessageCircle, MapPin, Calendar, Users, LayoutGrid, List } from 'lucide-react'
 
 // Types definitions
 type Rsvp = {
@@ -45,8 +45,24 @@ function formatDateTimeParts(dateString: string) {
     timeZone 
   }).format(date)
 
-  return { dayString, time, dayNum, cleanMonth, cleanWeekday }
-}
+  return { dayString, time, dayNum, cleanMonth, cleanWeekday }//
+  return { cleanWeekday, dayNum, cleanMonth, time }
+} // <--- CHECK OF DEZE ACCOLADE ER STAAT (Regel 96/97)
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; group?: string; display?: string }>
+}) {
+  const supabase = await createClient()
+  const resolvedParams = await searchParams 
+  
+  const view = resolvedParams.view || 'upcoming'
+  const groupId = resolvedParams.group
+  const displayMode = resolvedParams.display || 'grid'
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
 // STIJLEN VOOR DE LABELS (BADGES)
 function getEventTypeStyles(type: string) {
@@ -80,17 +96,6 @@ function getCardStyles(type: string) {
     }
     return 'border-violet-500/20 hover:border-violet-500/50 shadow-[0_0_30px_-10px_rgba(139,92,246,0.1)] hover:shadow-[0_0_40px_-5px_rgba(139,92,246,0.2)]'
 }
-
-export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string, group?: string }> }) {
-  const supabase = await createClient()
-  
-  const params = await searchParams
-  const view = params.view || 'upcoming'
-  const groupId = params.group
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
   // Haal ook jouw eigen stats op
   const { data: profile } = await supabase
     .from('profiles')
@@ -266,7 +271,23 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
                 </div>
             </div>
           ) : ( <div></div> )}
+        <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 backdrop-blur-md">
+ {/* GRID KNOP */}
+<Link 
+  href={`/?${new URLSearchParams(resolvedParams as any).toString().replace(/&?display=[^&]*/, '')}&display=grid`}
+  className={`p-2 rounded-lg transition-all ${displayMode === 'grid' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+>
+  <LayoutGrid size={18} />
+</Link>
 
+{/* LIST KNOP */}
+<Link 
+  href={`/?${new URLSearchParams(resolvedParams as any).toString().replace(/&?display=[^&]*/, '')}&display=list`}
+  className={`p-2 rounded-lg transition-all ${displayMode === 'list' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+>
+  <List size={18} />
+</Link>
+</div>
           <Link 
             href={groupId ? `/events/new?group=${groupId}` : "/events/new"} 
             className="bg-violet-600 px-6 py-2.5 font-bold text-white rounded-full shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:bg-violet-500 hover:scale-105 transition-all"
@@ -296,9 +317,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+       <div className={displayMode === 'grid' ? "grid grid-cols-1 md:grid-cols-3 gap-6" : "flex flex-col gap-3"}>
           {events && events.length > 0 ? (
             events.map((event) => {
+              if (displayMode === 'list') {
+  return }
               const { dayString, time, dayNum, cleanMonth, cleanWeekday } = formatDateTimeParts(event.start_at)
               const isCreator = user.id === event.created_by;
               const myRsvp = event.rsvps?.find((r: Rsvp) => r.user_id === user.id);

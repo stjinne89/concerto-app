@@ -269,30 +269,35 @@ export async function joinGroupWithCode(formData: FormData) {
     .insert({ group_id: groupId, user_id: user.id })
     .select()
 
-  await incrementXP(user.id, 10, 'rsvp') // We hergebruiken 'rsvp' type of maken een nieuwe
+  await incrementXP(user.id, 10, 'rsvp') // We hergebruiken 'rsvp' type of maken een nieuwes
 
   revalidatePath('/')
   redirect(`/?group=${groupId}`)
 }
 
 // --- 7. SCRAPING (De Vernieuwde Versie) ---
-
 export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
 
+  // VERVANG 'JOUW_API_KEY' door de sleutel van ScraperAPI
+  const SCRAPER_API_KEY = '8db94a4134aac8fd60c6170657405d62';
+  const proxyUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=true`;
+
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    })
+    // We gebruiken de proxy URL in plaats van de directe URL
+    const response = await fetch(proxyUrl, { cache: 'no-store' })
+    
+    if (!response.ok) {
+      console.error('Proxy request failed:', response.statusText)
+      return { success: false }
+    }
+
     const html = await response.text()
     const $ = cheerio.load(html)
 
-    // 1. BASIS: Haal data uit OpenGraph tags
+    // 1. BASIS: Data uit OpenGraph tags
     let title = $('meta[property="og:title"]').attr('content') || $('title').text()
     let description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
-    
     let image_url = $('meta[property="og:image"]').attr('content') || 
                     $('meta[name="twitter:image"]').attr('content') ||
                     $('link[rel="image_src"]').attr('href');
@@ -301,73 +306,53 @@ export async function scrapeEventUrl(url: string) {
     let venue = ''
     let lineup: string[] = []
 
-    // 2. GEAVANCEERD: Zoek naar JSON-LD data (Schema.org)
+    // 2. JSON-LD Detectie (Schema.org)
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
         const json = JSON.parse($(el).html() || '{}')
-        
-        const type = json['@type']
-        if (type === 'Event' || type === 'MusicEvent' || type === 'Festival' || type === 'Concert') {
-           
-           if (json.startDate) start_at = json.startDate
+        const items = Array.isArray(json) ? json : (json['@graph'] ? json['@graph'] : [json]);
 
-           if (json.location && json.location.name) {
-               venue = json.location.name
-           } else if (json.location && typeof json.location === 'string') {
-               venue = json.location
-           }
+        items.forEach((item: any) => {
+          const type = item['@type']
+          if (type === 'Event' || type === 'MusicEvent' || type === 'Festival' || type === 'Concert') {
+             if (item.startDate) start_at = item.startDate
+             if (item.location?.name) venue = item.location.name
+             else if (typeof item.location === 'string') venue = item.location
 
-           if (json.image) {
-                if (Array.isArray(json.image)) {
-                    image_url = json.image[0]
-                } else if (typeof json.image === 'object' && json.image.url) {
-                    image_url = json.image.url
-                } else if (typeof json.image === 'string') {
-                    image_url = json.image
-                }
-           }
+             if (item.image) {
+                  if (Array.isArray(item.image)) image_url = item.image[0]
+                  else if (typeof item.image === 'object' && item.image.url) image_url = item.image.url
+                  else if (typeof item.image === 'string') image_url = item.image
+             }
 
-           // LINE-UP Detectie
-           if (json.performer) {
-               const performers = Array.isArray(json.performer) ? json.performer : [json.performer]
-               performers.forEach((p: any) => {
-                   if (p.name) lineup.push(p.name)
-               })
-           } else if (json.subEvent) {
-               const subs = Array.isArray(json.subEvent) ? json.subEvent : [json.subEvent]
-               subs.forEach((s: any) => {
-                   if (s.name) lineup.push(s.name)
-                   if (s.performer && s.performer.name) lineup.push(s.performer.name)
-               })
-           }
-        }
-      } catch (e) {
-        // Negeren
-      }
+             if (item.performer) {
+                 const performers = Array.isArray(item.performer) ? item.performer : [item.performer]
+                 performers.forEach((p: any) => { if (p.name) lineup.push(p.name) })
+             }
+          }
+        });
+      } catch (e) { /* Negeren */ }
     })
 
     // 3. OPSCHONEN
-    title = title?.split('|')[0].trim() || ''
-    const uniqueLineup = [...new Set(lineup)]
+    title = title?.split('|')[0].split(' - ')[0].trim() || ''
 
     return {
       success: true,
       data: {
         title,
-        description,
+        description: description?.substring(0, 500),
         image_url, 
-        venue,
+        venue: venue || 'Onbekende Locatie',
         start_at,
-        lineup: uniqueLineup 
+        lineup: [...new Set(lineup)] 
       }
     }
-
   } catch (error) {
-    console.error('Scraping failed:', error)
+    console.error('Scraping with proxy failed:', error)
     return { success: false }
   }
 }
-
 // --- 8. GROEP PROFIEL & MUZIEK ---
 
 export async function updateGroupProfile(groupId: string, formData: FormData) {
