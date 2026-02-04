@@ -80,10 +80,23 @@ function NewEventForm() {
     e.preventDefault()
     setLoading(true)
 
-    await createEvent({
-        ...formData,
-        group_id: groupId || null
-    })
+    try {
+        const result = await createEvent({
+            ...formData,
+            group_id: groupId || null
+        })
+
+        // Check of er een error is teruggekomen (als er geen redirect plaatsvond)
+        if (result && result.error) {
+            console.error(result.error)
+            setLoading(false)
+            alert(`Er ging iets mis: ${typeof result.error === 'string' ? result.error : 'Onbekende fout'}`)
+        }
+    } catch (error) {
+        console.error("Submission error:", error)
+        setLoading(false)
+        alert("Er is een onverwachte fout opgetreden.")
+    }
   }
 
   return (
