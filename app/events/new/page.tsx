@@ -2,11 +2,12 @@
 
 import { createEvent, scrapeEventUrl, getGroupName } from '@/app/actions'
 import { useState, Suspense, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Link2, Loader2, Sparkles, Ticket, RefreshCw, Repeat, ArrowLeft, X, MessageCircle, Lock, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 function NewEventForm() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const groupId = searchParams.get('group')
 
@@ -44,6 +45,7 @@ function NewEventForm() {
         const date = new Date(newStart)
         date.setHours(date.getHours() + 3)
         
+        // Corrigeer voor tijdzone offset om lokale tijd te behouden in ISO string
         newEnd = new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
             .toISOString()
             .slice(0, 16)
@@ -60,12 +62,32 @@ function NewEventForm() {
       const result = await scrapeEventUrl(scrapeUrl)
       
       if (result.success && result.data) {
+        
+        // --- DATUM FIX START ---
+        // We moeten zorgen dat de datum string precies "yyyy-MM-ddThh:mm" is
+        let formattedStart = ''
+        if (result.data.start_at) {
+            // We proberen de datum te parsen
+            const date = new Date(result.data.start_at)
+            if (!isNaN(date.getTime())) {
+                // We passen de tijdzone truc toe:
+                // We trekken de timezone offset af van de tijd, zodat .toISOString()
+                // de "wall clock" tijd laat zien in plaats van UTC.
+                const offsetMs = date.getTimezoneOffset() * 60000
+                formattedStart = new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+            } else {
+                // Fallback: als parsen niet lukt, pakken we de eerste 16 tekens als het een string is
+                formattedStart = result.data.start_at.substring(0, 16)
+            }
+        }
+        // --- DATUM FIX END ---
+
         setFormData(prev => ({
           ...prev,
           title: result.data.title || prev.title,
           venue: result.data.venue || prev.venue,
           description: result.data.description || prev.description,
-          start_at: result.data.start_at || prev.start_at,
+          start_at: formattedStart || prev.start_at,
           image_url: result.data.image_url || prev.image_url,
           ticket_link: scrapeUrl
         }))
@@ -76,7 +98,7 @@ function NewEventForm() {
     setLoading(false)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
@@ -86,11 +108,21 @@ function NewEventForm() {
             group_id: groupId || null
         })
 
-        // Check of er een error is teruggekomen (als er geen redirect plaatsvond)
-        if (result && result.error) {
-            console.error(result.error)
+        if (result && result.success && result.redirectUrl) {
+            // Succes! We navigeren weg.
+            router.push(result.redirectUrl)
+            router.refresh()
+            // We zetten loading NIET uit, want we gaan naar een nieuwe pagina
+        } else {
+            // Er ging iets mis OF we kregen geen redirectUrl
             setLoading(false)
-            alert(`Er ging iets mis: ${typeof result.error === 'string' ? result.error : 'Onbekende fout'}`)
+            if (result && result.error) {
+                alert(`Er ging iets mis: ${typeof result.error === 'string' ? result.error : 'Onbekende fout'}`)
+            } else {
+                // Fallback voor als er wel succes was maar geen URL (zou niet mogen gebeuren met bovenstaande fix)
+                alert('Event is aangemaakt, maar kon niet automatisch doorverwijzen.')
+                router.push('/')
+            }
         }
     } catch (error) {
         console.error("Submission error:", error)
@@ -275,14 +307,12 @@ function NewEventForm() {
                             </div>
                             <input 
                                 name="chat_link" type="url" 
-                                // Aangepaste placeholder tekst
                                 placeholder={groupId ? "Link naar WhatsApp groep" : "Gebruik dit alleen voor OPENBARE groepen!"}
                                 value={formData.chat_link}
                                 onChange={e => setFormData({...formData, chat_link: e.target.value})}
                                 className={`w-full bg-white/5 border rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 transition-all ${groupId ? 'border-green-500/30 focus:border-green-500 focus:ring-green-500/50' : 'border-amber-500/30 focus:border-amber-500 focus:ring-amber-500/50'}`}
                             />
                         </div>
-                        {/* WAARSCHUWING TEKST */}
                         <div className="mt-2 ml-1 flex items-start gap-2 text-[10px] uppercase font-bold tracking-wide leading-tight">
                             {groupId ? (
                                 <>

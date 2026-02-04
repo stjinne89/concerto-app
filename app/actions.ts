@@ -103,7 +103,7 @@ export async function createEvent(data: any) {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  if (!user) return { success: false, error: 'Niet ingelogd' } // Veiligheid
 
   // Probeer coördinaten te vinden
   let lat = null
@@ -142,7 +142,7 @@ export async function createEvent(data: any) {
     return { success: false, error: error.message }
   }
 
-  // GAMIFICATION: +50 XP voor event maken
+  // GAMIFICATION
   try {
       await incrementXP(user.id, 50, 'event')
   } catch (xpError) {
@@ -151,7 +151,7 @@ export async function createEvent(data: any) {
 
   revalidatePath('/')
   
-  // Return redirect URL instead of redirecting directly
+  // HIER ZIT DE OPLOSSING: We sturen de URL terug naar de client
   return { 
     success: true, 
     redirectUrl: data.group_id ? `/?group=${data.group_id}` : '/'
