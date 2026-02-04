@@ -1,6 +1,5 @@
 [build]
   command = "npm run build"
-  # publish = ".next" <--- VERWIJDER DEZE REGEL (of zet er een # voor)
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
