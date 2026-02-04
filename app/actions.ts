@@ -139,11 +139,16 @@ export async function createEvent(data: any) {
 
   if (error) {
     console.error('Create Event Error:', error)
-    return { success: false, error }
+    return { success: false, error: error.message }
   }
 
   // GAMIFICATION: +50 XP voor event maken
-  await incrementXP(user.id, 50, 'event')
+  // We wrappen dit in een try/catch zodat het event niet "faalt" als XP faalt
+  try {
+      await incrementXP(user.id, 50, 'event')
+  } catch (xpError) {
+      console.error('XP update failed (ignoring):', xpError)
+  }
 
   revalidatePath('/')
   
@@ -269,7 +274,11 @@ export async function joinGroupWithCode(formData: FormData) {
     .insert({ group_id: groupId, user_id: user.id })
     .select()
 
-  await incrementXP(user.id, 10, 'rsvp') // We hergebruiken 'rsvp' type of maken een nieuwes
+  try {
+      await incrementXP(user.id, 10, 'rsvp') // We hergebruiken 'rsvp' type of maken een nieuwes
+  } catch (xpError) {
+      console.error('XP update failed (ignoring):', xpError)
+  }
 
   revalidatePath('/')
   redirect(`/?group=${groupId}`)
@@ -427,38 +436,49 @@ export async function getGroupMusic(groupId: string) {
 // --- 9. GAMIFICATION & INTERACTIE ---
 
 export async function incrementXP(userId: string, amount: number, type: 'event' | 'rsvp' | 'message') {
-    const supabase = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-  
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('xp_points, events_created, rsvps_count, messages_count')
-        .eq('id', userId)
-        .single()
-  
-    if (!profile) return
-  
-    let newXp = (profile.xp_points || 0) + amount
-    let newEvents = profile.events_created || 0
-    let newRsvps = profile.rsvps_count || 0
-    let newMessages = profile.messages_count || 0
-  
-    if (type === 'event') newEvents++
-    if (type === 'rsvp') newRsvps++
-    if (type === 'message') newMessages++
-  
-    await supabase
-        .from('profiles')
-        .update({
-            xp_points: newXp,
-            events_created: newEvents,
-            rsvps_count: newRsvps,
-            messages_count: newMessages,
-            last_activity_at: new Date().toISOString()
-        })
-        .eq('id', userId)
+    // Check of keys er zijn, anders stoppen we direct
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.warn('XP Increment overgeslagen: Supabase Admin keys ontbreken')
+        return
+    }
+
+    try {
+        const supabase = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+    
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('xp_points, events_created, rsvps_count, messages_count')
+            .eq('id', userId)
+            .single()
+    
+        if (!profile) return
+    
+        let newXp = (profile.xp_points || 0) + amount
+        let newEvents = profile.events_created || 0
+        let newRsvps = profile.rsvps_count || 0
+        let newMessages = profile.messages_count || 0
+    
+        if (type === 'event') newEvents++
+        if (type === 'rsvp') newRsvps++
+        if (type === 'message') newMessages++
+    
+        await supabase
+            .from('profiles')
+            .update({
+                xp_points: newXp,
+                events_created: newEvents,
+                rsvps_count: newRsvps,
+                messages_count: newMessages,
+                last_activity_at: new Date().toISOString()
+            })
+            .eq('id', userId)
+    } catch (e) {
+        console.error('Error in incrementXP:', e)
+        // We gooien de error NIET opnieuw op, zodat de flow door kan gaan
+    }
 }
 
 // --- RSVP MET PUNTEN ---
@@ -491,13 +511,17 @@ export async function toggleRsvp(eventId: string, status: 'going' | 'interested'
         return { success: false }
     }
   
-    // 3. Punten uitdelen
-    if (!existing) {
-        if (status === 'going') await incrementXP(user.id, 15, 'rsvp')
-        if (status === 'interested') await incrementXP(user.id, 5, 'rsvp')
-    } else if (existing.status !== status) {
-        if (status === 'going' && existing.status !== 'going') await incrementXP(user.id, 15, 'rsvp')
-        if (status === 'interested' && existing.status === 'cant') await incrementXP(user.id, 5, 'rsvp')
+    // 3. Punten uitdelen (Silent Fail)
+    try {
+        if (!existing) {
+            if (status === 'going') await incrementXP(user.id, 15, 'rsvp')
+            if (status === 'interested') await incrementXP(user.id, 5, 'rsvp')
+        } else if (existing.status !== status) {
+            if (status === 'going' && existing.status !== 'going') await incrementXP(user.id, 15, 'rsvp')
+            if (status === 'interested' && existing.status === 'cant') await incrementXP(user.id, 5, 'rsvp')
+        }
+    } catch (e) {
+        console.error('RSVP XP update failed:', e)
     }
   
     revalidatePath('/')
@@ -539,7 +563,10 @@ export async function sendChatMessage(eventId: string, message: string) {
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', eventId)
 
-    await incrementXP(user.id, 2, 'message')
+    // Silent fail XP
+    try {
+        await incrementXP(user.id, 2, 'message')
+    } catch(e) { /* ignore */ }
 
     revalidatePath('/')
     return { success: true }
