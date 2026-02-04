@@ -1,11 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Voeg deze regel toe voor betere compatibiliteit met serverless environments
+  output: 'standalone', 
+  
   images: {
     remotePatterns: [
       {
-        protocol: 'https', // <--- Hier mag ALLEEN 'https' staan
-        hostname: 'bvalaeywdlqsbzqpeafr.supabase.co', // <--- Hier jouw Supabase domein (zonder https://)
+        protocol: 'https',
+        hostname: 'bvalaeywdlqsbzqpeafr.supabase.co',
         port: '',
         pathname: '/storage/v1/object/public/**',
       },

@@ -1,6 +1,6 @@
 [build]
   command = "npm run build"
-  publish = ".next"
+  # publish = ".next" <--- VERWIJDER DEZE REGEL (of zet er een # voor)
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -8,7 +8,7 @@
 [functions]
   node_bundler = "esbuild"
 
-# Dit vertelt Netlify: Roep deze URL elke zondag aan
+# Je scheduled function configuratie is verder prima
 [[scheduled_functions]]
-  function = "newsletter-trigger" # Dit is een alias, zie hieronder
-  schedule = "2 1 * * 0" # Elke zondag om 21:00 uur
+  function = "newsletter-trigger" 
+  schedule = "2 1 * * 0"
