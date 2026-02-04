@@ -143,7 +143,6 @@ export async function createEvent(data: any) {
   }
 
   // GAMIFICATION: +50 XP voor event maken
-  // We wrappen dit in een try/catch zodat het event niet "faalt" als XP faalt
   try {
       await incrementXP(user.id, 50, 'event')
   } catch (xpError) {
@@ -152,10 +151,10 @@ export async function createEvent(data: any) {
 
   revalidatePath('/')
   
-  if (data.group_id) {
-      redirect(`/?group=${data.group_id}`)
-  } else {
-      redirect('/')
+  // Return redirect URL instead of redirecting directly
+  return { 
+    success: true, 
+    redirectUrl: data.group_id ? `/?group=${data.group_id}` : '/'
   }
 }
 
@@ -275,7 +274,7 @@ export async function joinGroupWithCode(formData: FormData) {
     .select()
 
   try {
-      await incrementXP(user.id, 10, 'rsvp') // We hergebruiken 'rsvp' type of maken een nieuwes
+      await incrementXP(user.id, 10, 'rsvp')
   } catch (xpError) {
       console.error('XP update failed (ignoring):', xpError)
   }
@@ -288,12 +287,10 @@ export async function joinGroupWithCode(formData: FormData) {
 export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
 
-  // VERVANG 'JOUW_API_KEY' door de sleutel van ScraperAPI
   const SCRAPER_API_KEY = '8db94a4134aac8fd60c6170657405d62';
   const proxyUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=true`;
 
   try {
-    // We gebruiken de proxy URL in plaats van de directe URL
     const response = await fetch(proxyUrl, { cache: 'no-store' })
     
     if (!response.ok) {
@@ -315,7 +312,7 @@ export async function scrapeEventUrl(url: string) {
     let venue = ''
     let lineup: string[] = []
 
-    // 2. JSON-LD Detectie (Schema.org)
+    // 2. JSON-LD Detectie
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
         const json = JSON.parse($(el).html() || '{}')
@@ -343,7 +340,6 @@ export async function scrapeEventUrl(url: string) {
       } catch (e) { /* Negeren */ }
     })
 
-    // 3. OPSCHONEN
     title = title?.split('|')[0].split(' - ')[0].trim() || ''
 
     return {
@@ -362,6 +358,7 @@ export async function scrapeEventUrl(url: string) {
     return { success: false }
   }
 }
+
 // --- 8. GROEP PROFIEL & MUZIEK ---
 
 export async function updateGroupProfile(groupId: string, formData: FormData) {
@@ -436,7 +433,6 @@ export async function getGroupMusic(groupId: string) {
 // --- 9. GAMIFICATION & INTERACTIE ---
 
 export async function incrementXP(userId: string, amount: number, type: 'event' | 'rsvp' | 'message') {
-    // Check of keys er zijn, anders stoppen we direct
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         console.warn('XP Increment overgeslagen: Supabase Admin keys ontbreken')
         return
@@ -477,18 +473,14 @@ export async function incrementXP(userId: string, amount: number, type: 'event' 
             .eq('id', userId)
     } catch (e) {
         console.error('Error in incrementXP:', e)
-        // We gooien de error NIET opnieuw op, zodat de flow door kan gaan
     }
 }
 
-// --- RSVP MET PUNTEN ---
-// LET OP: status is 'interested' ipv 'maybe', consistent met Frontend
 export async function toggleRsvp(eventId: string, status: 'going' | 'interested' | 'cant') {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
   
-    // 1. Check bestaande
     const { data: existing } = await supabase
       .from('rsvps')
       .select('status')
@@ -496,7 +488,6 @@ export async function toggleRsvp(eventId: string, status: 'going' | 'interested'
       .eq('user_id', user.id)
       .single()
   
-    // 2. Opslaan
     const { error } = await supabase
       .from('rsvps')
       .upsert({
@@ -511,7 +502,6 @@ export async function toggleRsvp(eventId: string, status: 'going' | 'interested'
         return { success: false }
     }
   
-    // 3. Punten uitdelen (Silent Fail)
     try {
         if (!existing) {
             if (status === 'going') await incrementXP(user.id, 15, 'rsvp')
@@ -563,7 +553,6 @@ export async function sendChatMessage(eventId: string, message: string) {
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', eventId)
 
-    // Silent fail XP
     try {
         await incrementXP(user.id, 2, 'message')
     } catch(e) { /* ignore */ }
@@ -625,8 +614,6 @@ export async function unsubscribeUser(userId: string) {
   
     return { success: true }
 }
-
-// --- 10. OVERIGE GETTERS ---
 
 export async function getGroupMembers(groupId: string) {
   const supabase = await createClient()
