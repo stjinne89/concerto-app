@@ -1,20 +1,38 @@
 'use client'
 
-import { login, signup } from '@/app/actions'
+import { login, signup, requestPasswordReset } from './actions'
 import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Loader2, AlertCircle } from 'lucide-react'
-import Image from 'next/image' // <--- Belangrijk
+import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import Image from 'next/image'
 
 function LoginForm() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
+  
+  // States voor de verschillende weergaves
   const [isLoginMode, setIsLoginMode] = useState(true)
+  const [isResetMode, setIsResetMode] = useState(false)
+  
+  // States voor meldingen
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const handleSubmit = async (formData: FormData) => {
     setLoading(true)
     setErrorMsg(null)
+    setSuccessMsg(null)
+
+    // Als we in wachtwoord-vergeten modus zijn
+    if (isResetMode) {
+      const result = await requestPasswordReset(formData)
+      if (result?.error) setErrorMsg(result.error)
+      if (result?.success) setSuccessMsg(result.success)
+      setLoading(false)
+      return
+    }
+
+    // Voor regulier inloggen of aanmelden
     const action = isLoginMode ? login : signup
     const result = await action(formData)
     if (result?.error) {
@@ -33,7 +51,7 @@ function LoginForm() {
         <div className="flex justify-center mb-8">
             <div className="relative w-28 h-28 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(124,58,237,0.3)] border border-white/10">
                 <Image 
-                    src="/concerto_logo.png"  // <--- De juiste naam
+                    src="/concerto_logo.png"
                     alt="Concerto Logo" 
                     fill 
                     className="object-cover"
@@ -43,16 +61,29 @@ function LoginForm() {
         </div>
 
         <h1 className="text-2xl font-black text-white mb-2 text-center tracking-tight">
-          {isLoginMode ? 'Concerto' : 'Welkom bij Concerto'}
+          {isResetMode ? 'Wachtwoord Herstellen' : isLoginMode ? 'Concerto' : 'Welkom bij Concerto'}
         </h1>
         <p className="text-slate-400 text-sm text-center mb-6">
-          {isLoginMode ? 'Welkom bij de leukste event kalender van de Benelux' : 'maak een account en sluit je aan bij de community'}
+          {isResetMode 
+            ? 'Vul je e-mailadres in om een herstel-link te ontvangen' 
+            : isLoginMode 
+              ? 'Welkom bij de leukste event kalender van de Benelux' 
+              : 'Maak een account en sluit je aan bij de community'}
         </p>
 
+        {/* FOUTMELDING */}
         {errorMsg && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-red-200 text-sm">
             <AlertCircle size={16} className="shrink-0" />
             <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* SUCCESMELDING (Voor de reset email) */}
+        {successMsg && (
+          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-2 text-green-200 text-sm">
+            <CheckCircle2 size={16} className="shrink-0" />
+            <span>{successMsg}</span>
           </div>
         )}
 
@@ -68,22 +99,35 @@ function LoginForm() {
             />
           </div>
 
-          <div className="space-y-1">
-             <label className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">Wachtwoord</label>
-             <input 
-              name="password" 
-              type="password" 
-              required 
-              placeholder="••••••••"
-              className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-colors"
-            />
-          </div>
+          {!isResetMode && (
+            <div className="space-y-1">
+               <div className="flex justify-between items-center pr-1">
+                 <label className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">Wachtwoord</label>
+                 {isLoginMode && (
+                   <button 
+                     type="button" 
+                     onClick={() => { setIsResetMode(true); setErrorMsg(null); setSuccessMsg(null); }}
+                     className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                   >
+                     Vergeten?
+                   </button>
+                 )}
+               </div>
+               <input 
+                name="password" 
+                type="password" 
+                required 
+                placeholder="••••••••"
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-colors"
+              />
+            </div>
+          )}
 
-          {!isLoginMode && (
+          {!isLoginMode && !isResetMode && (
             <div className="space-y-1">
               <label className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">Volledige Naam</label>
               <input 
-                name="fullName" 
+                name="full_name" 
                 type="text" 
                 required 
                 placeholder="Voornaam Achternaam"
@@ -98,18 +142,28 @@ function LoginForm() {
             className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50 shadow-lg shadow-violet-900/20"
           >
             {loading && <Loader2 size={18} className="animate-spin" />}
-            {isLoginMode ? 'Inloggen' : 'Aanmelden'}
+            {isResetMode ? 'Stuur Link' : isLoginMode ? 'Inloggen' : 'Aanmelden'}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <button 
-            type="button"
-            onClick={() => { setIsLoginMode(!isLoginMode); setErrorMsg(null); }}
-            className="text-sm text-slate-400 hover:text-white transition-colors"
-          >
-            {isLoginMode ? 'Nog geen account? Meld je aan' : 'Al een account? Log in'}
-          </button>
+        <div className="mt-6 flex flex-col items-center gap-2 text-sm">
+          {isResetMode ? (
+            <button 
+              type="button"
+              onClick={() => { setIsResetMode(false); setErrorMsg(null); setSuccessMsg(null); }}
+              className="text-slate-400 hover:text-white transition-colors"
+            >
+              Terug naar inloggen
+            </button>
+          ) : (
+            <button 
+              type="button"
+              onClick={() => { setIsLoginMode(!isLoginMode); setErrorMsg(null); setSuccessMsg(null); }}
+              className="text-slate-400 hover:text-white transition-colors"
+            >
+              {isLoginMode ? 'Nog geen account? Meld je aan' : 'Al een account? Log in'}
+            </button>
+          )}
         </div>
       </div>
     </div>

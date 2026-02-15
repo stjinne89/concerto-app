@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
+import { headers } from 'next/headers'
 
 // --- HULPFUNCTIES ---
 
@@ -33,7 +34,12 @@ async function getCoordinates(venue: string) {
 
 // --- AUTHENTICATIE (LOGIN & SIGNUP) ---
 
-export async function login(formData: FormData) {
+type ActionResult = {
+  error?: string
+  success?: string
+}
+
+export async function login(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient()
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -44,14 +50,14 @@ export async function login(formData: FormData) {
   })
 
   if (error) {
-    return redirect('/login?error=Kan niet inloggen')
+    return { error: 'Kan niet inloggen' }
   }
 
   revalidatePath('/', 'layout')
   redirect('/')
 }
 
-export async function signup(formData: FormData) {
+export async function signup(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient()
   
   const email = formData.get('email') as string
@@ -297,4 +303,47 @@ export async function scrapeEventUrl(url: string) {
     console.error('Scrape error:', error);
     return { success: false, error: 'Fout bij inlezen' };
   }
+}
+  export async function requestPasswordReset(formData: FormData): Promise<ActionResult> {
+  const supabase = await createClient()
+  const email = formData.get('email') as string
+
+  // Haal het huidige domein op (handig voor zowel localhost als productie)
+  const headersList = await headers()
+  const host = headersList.get('host') || 'localhost:3000'
+  const protocol = host.includes('localhost') ? 'http' : 'https'
+  const origin = `${protocol}://${host}`
+
+  // Stuur de herstel e-mail via Supabase
+  // We sturen de gebruiker via de callback route door naar /update-password
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/callback?next=/update-password`,
+  })
+
+  if (error) {
+    console.error('Reset error:', error)
+    return { error: 'Kan de herstel-link niet versturen. Controleer het e-mailadres.' }
+  }
+
+  return { success: 'Check je e-mail voor de herstel-link!' }
+}
+
+export async function updatePassword(formData: FormData) {
+  const supabase = await createClient()
+  const password = formData.get('password') as string
+
+  // Omdat de gebruiker via de e-mail link automatisch is ingelogd, 
+  // kunnen we nu direct hun wachtwoord updaten.
+  const { error } = await supabase.auth.updateUser({
+    password: password
+  })
+
+  if (error) {
+    console.error('Update password error:', error)
+    return { error: 'Kan wachtwoord niet updaten.' }
+  }
+
+  // Na succesvol updaten, stuur de gebruiker naar de homepage
+  revalidatePath('/')
+  redirect('/')
 }
