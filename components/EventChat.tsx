@@ -180,10 +180,9 @@ export default function EventChat({ eventId, currentUserId, hasUnread }: { event
                          {/* HIER IS DE NIEUWE AVATAR! */}
                          <div className="shrink-0 mb-1">
                             <GamifiedAvatar 
-                                profile={msg.profiles} 
-                                size="sm" 
-                                showCrown={false} // Geen kroontje in de chat, te druk
-                            />
+    profile={msg.profiles}
+    size="sm"
+/>
                          </div>
 
                         <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
