@@ -167,13 +167,11 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
             {rsvps.filter(r => r.status === 'going').slice(0, 3).map((r, i) => (
                 <div key={i} className="relative transition-transform hover:scale-110 hover:z-10">
                     <GamifiedAvatar 
-                        // HIER IS DE FIX: Fallback naar placeholder
                         profile={r.profiles ? {
                             ...r.profiles,
                             avatar_url: r.profiles.avatar_url || '/images/avatar-placeholder.png'
                         } : null}
                         size="sm" 
-                        showCrown={false} // Geen kroontjes in deze kleine weergave
                     />
                 </div>
             ))}
@@ -213,7 +211,6 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                         >
                             <div className="flex items-center gap-3">
                                 
-                                {/* HIER DE NIEUWE GAMIFIED AVATAR (MET FIX) */}
                                 <div>
                                     <GamifiedAvatar 
                                         profile={r.profiles ? {
@@ -221,7 +218,6 @@ export default function RsvpControl({ eventId, myStatus, allRsvps, initialReacti
                                             avatar_url: r.profiles.avatar_url || '/images/avatar-placeholder.png'
                                         } : null}
                                         size="md" // Iets groter (48px) zodat de rand goed zichtbaar is
-                                        showCrown={true} 
                                     />
                                 </div>
 
