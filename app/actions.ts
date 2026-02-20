@@ -4,8 +4,6 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
-// We geven deze een alias om conflict te voorkomen met de server client
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 // --- HULPFUNCTIES ---
 
@@ -88,7 +86,7 @@ export async function signup(formData: FormData) {
       id: data.user.id,
       full_name: fullName,
       email: email,
-      xp_points: 0, // Start met 0 XP
+      xp_points: 0, // We laten de kolom met rust voor de database
       newsletter_subscribed: true
     })
   }
@@ -103,7 +101,7 @@ export async function createEvent(data: any) {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Niet ingelogd' } // Veiligheid
+  if (!user) return { success: false, error: 'Niet ingelogd' }
 
   // Probeer coördinaten te vinden
   let lat = null
@@ -142,16 +140,8 @@ export async function createEvent(data: any) {
     return { success: false, error: error.message }
   }
 
-  // GAMIFICATION
-  try {
-      await incrementXP(user.id, 50, 'event')
-  } catch (xpError) {
-      console.error('XP update failed (ignoring):', xpError)
-  }
-
   revalidatePath('/')
   
-  // HIER ZIT DE OPLOSSING: We sturen de URL terug naar de client
   return { 
     success: true, 
     redirectUrl: data.group_id ? `/?group=${data.group_id}` : '/'
@@ -273,17 +263,11 @@ export async function joinGroupWithCode(formData: FormData) {
     .insert({ group_id: groupId, user_id: user.id })
     .select()
 
-  try {
-      await incrementXP(user.id, 10, 'rsvp')
-  } catch (xpError) {
-      console.error('XP update failed (ignoring):', xpError)
-  }
-
   revalidatePath('/')
   redirect(`/?group=${groupId}`)
 }
 
-// --- 7. SCRAPING (De Vernieuwde Versie) ---
+// --- 7. SCRAPING ---
 export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
 
@@ -430,63 +414,12 @@ export async function getGroupMusic(groupId: string) {
     return data || []
 }
 
-// --- 9. GAMIFICATION & INTERACTIE ---
-
-export async function incrementXP(userId: string, amount: number, type: 'event' | 'rsvp' | 'message') {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        console.warn('XP Increment overgeslagen: Supabase Admin keys ontbreken')
-        return
-    }
-
-    try {
-        const supabase = createAdminClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
-    
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('xp_points, events_created, rsvps_count, messages_count')
-            .eq('id', userId)
-            .single()
-    
-        if (!profile) return
-    
-        let newXp = (profile.xp_points || 0) + amount
-        let newEvents = profile.events_created || 0
-        let newRsvps = profile.rsvps_count || 0
-        let newMessages = profile.messages_count || 0
-    
-        if (type === 'event') newEvents++
-        if (type === 'rsvp') newRsvps++
-        if (type === 'message') newMessages++
-    
-        await supabase
-            .from('profiles')
-            .update({
-                xp_points: newXp,
-                events_created: newEvents,
-                rsvps_count: newRsvps,
-                messages_count: newMessages,
-                last_activity_at: new Date().toISOString()
-            })
-            .eq('id', userId)
-    } catch (e) {
-        console.error('Error in incrementXP:', e)
-    }
-}
+// --- 9. INTERACTIE (RSVP & Chat - zonder XP) ---
 
 export async function toggleRsvp(eventId: string, status: 'going' | 'interested' | 'cant') {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-  
-    const { data: existing } = await supabase
-      .from('rsvps')
-      .select('status')
-      .eq('event_id', eventId)
-      .eq('user_id', user.id)
-      .single()
   
     const { error } = await supabase
       .from('rsvps')
@@ -500,18 +433,6 @@ export async function toggleRsvp(eventId: string, status: 'going' | 'interested'
     if (error) {
         console.error('RSVP Error:', error)
         return { success: false }
-    }
-  
-    try {
-        if (!existing) {
-            if (status === 'going') await incrementXP(user.id, 15, 'rsvp')
-            if (status === 'interested') await incrementXP(user.id, 5, 'rsvp')
-        } else if (existing.status !== status) {
-            if (status === 'going' && existing.status !== 'going') await incrementXP(user.id, 15, 'rsvp')
-            if (status === 'interested' && existing.status === 'cant') await incrementXP(user.id, 5, 'rsvp')
-        }
-    } catch (e) {
-        console.error('RSVP XP update failed:', e)
     }
   
     revalidatePath('/')
@@ -553,10 +474,6 @@ export async function sendChatMessage(eventId: string, message: string) {
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', eventId)
 
-    try {
-        await incrementXP(user.id, 2, 'message')
-    } catch(e) { /* ignore */ }
-
     revalidatePath('/')
     return { success: true }
 }
@@ -597,7 +514,11 @@ export async function updateAvatar(formData: FormData) {
 }
 
 export async function unsubscribeUser(userId: string) {
-    const supabaseAdmin = createAdminClient(
+    // Alleen hier hebben we Supabase Admin nog nodig als je newsletter_subscribed wilt aanpassen buiten de RLS rules om
+    // Je zou hier ook gewoon createClient kunnen gebruiken afhankelijk van je RLS
+    // Ik heb de import vervangen door direct gebruik indien nodig
+    const { createClient: createAdmin } = await import('@supabase/supabase-js')
+    const supabaseAdmin = createAdmin(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )

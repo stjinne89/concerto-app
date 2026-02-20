@@ -322,7 +322,18 @@ function getCardStyles(type: string) {
                       </div>
                       <div className="flex-1 min-w-0 pr-8">
                         <h3 className={`text-xl font-bold break-words text-serif leading-tight ${view === 'history' ? 'text-slate-400' : 'text-white'}`}>
-                          {event.title}
+                          {event.ticket_link ? (
+                            <a 
+                              href={event.ticket_link} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="hover:underline decoration-violet-400 decoration-2 underline-offset-4 cursor-pointer relative z-10"
+                            >
+                              {event.title}
+                            </a>
+                          ) : (
+                            event.title
+                          )}
                         </h3>
                         <div className="text-sm text-slate-400 mt-2 flex flex-col gap-1.5">
                           <div className="flex items-center gap-2">

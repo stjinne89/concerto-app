@@ -13,6 +13,7 @@ type Event = {
     image_url?: string
     venue_name?: string
     event_type?: string
+    ticket_link?: string // Toegevoegd zodat we de link kunnen gebruiken
 }
 
 export default function EventSwiper({ initialEvents, userId }: { initialEvents: Event[], userId: string }) {
@@ -131,7 +132,23 @@ function SwipeCard({ event, userId, isTopCard, onSwipe }: { event: Event, userId
             {/* TEKST & INFO */}
             <div className="h-2/5 p-6 flex flex-col justify-between pointer-events-none">
                 <div>
-                    <h2 className="text-2xl font-black text-white leading-tight mb-2 line-clamp-2">{event.title}</h2>
+                    <h2 className="text-2xl font-black text-white leading-tight mb-2 line-clamp-2">
+                        {event.ticket_link ? (
+                            /* We voegen pointer-events-auto toe om de klik te vangen
+                               en stopPropagation om te voorkomen dat je per ongeluk de kaart sleept */
+                            <a 
+                                href={event.ticket_link} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="pointer-events-auto hover:underline decoration-violet-400 decoration-2 underline-offset-4"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
+                                {event.title}
+                            </a>
+                        ) : (
+                            event.title
+                        )}
+                    </h2>
                     <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
                         <Calendar size={16} className="text-violet-400" /> {date}
                     </div>
