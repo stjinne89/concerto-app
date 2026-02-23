@@ -5,24 +5,12 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import * as cheerio from 'cheerio'
 
-// --- HULPFUNCTIES ---
-
-function fixTimezoneOffset(dateString: string) {
-  if (!dateString) return null
-  const inputAsUtc = new Date(dateString)
-  if (isNaN(inputAsUtc.getTime())) return null
-  
-  const amsterdamDate = new Date(inputAsUtc.toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' }))
-  const offset = amsterdamDate.getTime() - inputAsUtc.getTime()
-  return new Date(inputAsUtc.getTime() - offset).toISOString()
-}
+// --- 1. HULPFUNCTIES ---
 
 async function getCoordinates(venue: string) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(venue)}&limit=1`
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'ConcertoApp/1.0' }
-    })
+    const response = await fetch(url, { headers: { 'User-Agent': 'ConcertoApp/1.0' } })
     const data = await response.json()
     if (data && data.length > 0) {
       return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) }
@@ -33,69 +21,31 @@ async function getCoordinates(venue: string) {
   return null
 }
 
-export async function getGroupName(groupId: string) {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('groups')
-    .select('name')
-    .eq('id', groupId)
-    .single()
-  
-  return data?.name || null
-}
-
-// --- 1. AUTHENTICATIE ---
-
-export async function login(formData: FormData) {
-  const supabase = await createClient()
-
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  if (error) {
-    return { error: 'Kon niet inloggen. Controleer je gegevens.' }
-  }
-
-  revalidatePath('/', 'layout')
-  redirect('/')
-}
+// --- 2. AUTHENTICATIE ---
 
 export async function signup(formData: FormData) {
   const supabase = await createClient()
-
   const email = formData.get('email') as string
   const password = formData.get('password') as string
   const fullName = formData.get('fullName') as string
 
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-  })
-
-  if (error) {
-    return { error: error.message }
-  }
+  const { data, error } = await supabase.auth.signUp({ email, password })
+  if (error) return { error: error.message }
 
   if (data.user) {
     await supabase.from('profiles').insert({
       id: data.user.id,
       full_name: fullName,
       email: email,
-      xp_points: 0, // We laten de kolom met rust voor de database
       newsletter_subscribed: true
+      // xp_points verwijderd voor optimalisatie
     })
   }
-
   revalidatePath('/', 'layout')
   redirect('/')
 }
 
-// --- 2. EVENTS: CREATE (Aanmaken) ---
+// --- 3. EVENTS: CREATE, READ, UPDATE, DELETE ---
 
 export async function createEvent(data: any) {
   const supabase = await createClient()
@@ -120,8 +70,8 @@ export async function createEvent(data: any) {
     .insert({
       title: data.title,
       venue_name: data.venue,
-      start_at: data.start_at,
-      end_at: data.end_at,
+      start_at: data.start_at || null, 
+      end_at: data.end_at || null,    
       event_type: data.type,
       ticket_link: data.ticket_link,
       ticketswap_link: data.ticketswap_link,
@@ -148,8 +98,6 @@ export async function createEvent(data: any) {
   }
 }
 
-// --- 3. EVENTS: READ (Ophalen voor edit) ---
-
 export async function getEvent(id: string) {
   const supabase = await createClient()
   const { data } = await supabase
@@ -160,8 +108,6 @@ export async function getEvent(id: string) {
   
   return data
 }
-
-// --- 4. EVENTS: UPDATE (Bewerken) ---
 
 export async function updateEvent(eventId: string, data: any) {
   const supabase = await createClient()
@@ -182,8 +128,8 @@ export async function updateEvent(eventId: string, data: any) {
   const updateData: any = {
       title: data.title,
       venue_name: data.venue,
-      start_at: data.start_at,
-      end_at: data.end_at,
+      start_at: data.start_at || null,
+      end_at: data.end_at || null,
       event_type: data.type,
       ticket_link: data.ticket_link,
       ticketswap_link: data.ticketswap_link,
@@ -213,8 +159,6 @@ export async function updateEvent(eventId: string, data: any) {
   return { success: true }
 }
 
-// --- 5. EVENTS: DELETE (Verwijderen) ---
-
 export async function deleteEvent(eventId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -235,7 +179,7 @@ export async function deleteEvent(eventId: string) {
   return { success: true }
 }
 
-// --- 6. GROEP JOINEN MET CODE ---
+// --- 4. GROEPEN & LEDEN ---
 
 export async function joinGroupWithCode(formData: FormData) {
   const code = formData.get('code') as string
@@ -267,7 +211,222 @@ export async function joinGroupWithCode(formData: FormData) {
   redirect(`/?group=${groupId}`)
 }
 
+export async function getGroupMembers(groupId: string) {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('group_members')
+    .select(`
+      user_id,
+      profiles (
+        full_name,
+        avatar_url
+      )
+    `)
+    .eq('group_id', groupId)
+
+  if (error) {
+    console.error('Error fetching members:', error)
+    return []
+  }
+
+  return data.map((member: any) => ({
+    id: member.user_id,
+    ...member.profiles
+  }))
+}
+
+export async function updateGroupProfile(groupId: string, formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  const description = formData.get('description') as string
+  const spotifyUrl = formData.get('spotify_url') as string
+  const imageFile = formData.get('image') as File
+  
+  const updates: any = { 
+    description,
+    spotify_playlist_url: spotifyUrl
+  }
+
+  if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop()
+      const fileName = `${groupId}-${Date.now()}.${fileExt}`
+      
+      const { error: uploadError } = await supabase.storage
+        .from('group-images')
+        .upload(fileName, imageFile, { upsert: true })
+
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('group-images')
+          .getPublicUrl(fileName)
+        updates.image_url = publicUrl
+      }
+  }
+
+  await supabase
+    .from('groups')
+    .update(updates)
+    .eq('id', groupId)
+
+  revalidatePath('/')
+}
+
+export async function addMusic(formData: FormData) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const groupId = formData.get('group_id') as string
+    const url = formData.get('url') as string
+    
+    if (!url.includes('spotify.com')) return
+
+    await supabase.from('group_music').insert({
+        group_id: groupId,
+        user_id: user.id,
+        url: url
+    })
+
+    revalidatePath('/')
+}
+
+export async function getGroupMusic(groupId: string) {
+    const supabase = await createClient()
+    const { data } = await supabase
+        .from('group_music')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false })
+        .limit(10)
+    
+    return data || []
+}
+
+// --- 5. INTERACTIE (RSVP & CHAT) ---
+
+export async function toggleRsvp(eventId: string, status: 'going' | 'interested' | 'cant') {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+  
+    const { error } = await supabase
+      .from('rsvps')
+      .upsert({
+        event_id: eventId,
+        user_id: user.id,
+        status: status,
+        last_read_at: new Date().toISOString()
+      }, { onConflict: 'event_id, user_id' })
+  
+    if (error) {
+        console.error('RSVP Error:', error)
+        return { success: false }
+    }
+  
+    revalidatePath('/')
+    return { success: true }
+}
+
+export async function markAsRead(eventId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase
+    .from('rsvps')
+    .update({ last_read_at: new Date().toISOString() })
+    .eq('event_id', eventId)
+    .eq('user_id', user.id)
+  
+  revalidatePath('/')
+}
+
+export async function sendChatMessage(eventId: string, message: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || !message.trim()) return
+
+    const { error } = await supabase
+        .from('event_chats')
+        .insert({
+            event_id: eventId,
+            user_id: user.id,
+            message: message.trim()
+        })
+    
+    if (error) return { success: false }
+
+    await supabase
+        .from('events')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', eventId)
+
+    revalidatePath('/')
+    return { success: true }
+}
+
+// --- 6. PROFIEL & INSTELLINGEN ---
+
+export async function updateAvatar(formData: FormData) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const file = formData.get('avatar') as File
+  if (!file) return
+
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${user.id}-${Date.now()}.${fileExt}`
+
+  const { error: uploadError } = await supabase
+    .storage
+    .from('avatars')
+    .upload(fileName, file, { upsert: true })
+
+  if (uploadError) {
+    console.error('Upload error:', uploadError)
+    throw new Error('Kon afbeelding niet uploaden')
+  }
+
+  const { data: { publicUrl } } = supabase
+    .storage
+    .from('avatars')
+    .getPublicUrl(fileName)
+
+  await supabase
+    .from('profiles')
+    .update({ avatar_url: publicUrl })
+    .eq('id', user.id)
+
+  revalidatePath('/profile')
+}
+
+export async function unsubscribeUser(userId: string) {
+    const { createClient: createAdmin } = await import('@supabase/supabase-js')
+    const supabaseAdmin = createAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ newsletter_subscribed: false })
+      .eq('id', userId)
+  
+    if (error) {
+      console.error('Unsubscribe failed:', error)
+      return { success: false, error: error.message }
+    }
+  
+    return { success: true }
+}
+
 // --- 7. SCRAPING ---
+
 export async function scrapeEventUrl(url: string) {
   if (!url) return { success: false }
 
@@ -341,225 +500,4 @@ export async function scrapeEventUrl(url: string) {
     console.error('Scraping with proxy failed:', error)
     return { success: false }
   }
-}
-
-// --- 8. GROEP PROFIEL & MUZIEK ---
-
-export async function updateGroupProfile(groupId: string, formData: FormData) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-
-  const description = formData.get('description') as string
-  const spotifyUrl = formData.get('spotify_url') as string
-  const imageFile = formData.get('image') as File
-  
-  const updates: any = { 
-    description,
-    spotify_playlist_url: spotifyUrl
-  }
-
-  if (imageFile && imageFile.size > 0) {
-      const fileExt = imageFile.name.split('.').pop()
-      const fileName = `${groupId}-${Date.now()}.${fileExt}`
-      
-      const { error: uploadError } = await supabase.storage
-        .from('group-images')
-        .upload(fileName, imageFile, { upsert: true })
-
-      if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage
-          .from('group-images')
-          .getPublicUrl(fileName)
-        updates.image_url = publicUrl
-      }
-  }
-
-  await supabase
-    .from('groups')
-    .update(updates)
-    .eq('id', groupId)
-
-  revalidatePath('/')
-}
-
-export async function addMusic(formData: FormData) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const groupId = formData.get('group_id') as string
-    const url = formData.get('url') as string
-    
-    if (!url.includes('spotify.com')) return
-
-    await supabase.from('group_music').insert({
-        group_id: groupId,
-        user_id: user.id,
-        url: url
-    })
-
-    revalidatePath('/')
-}
-
-export async function getGroupMusic(groupId: string) {
-    const supabase = await createClient()
-    const { data } = await supabase
-        .from('group_music')
-        .select('*')
-        .eq('group_id', groupId)
-        .order('created_at', { ascending: false })
-        .limit(10)
-    
-    return data || []
-}
-
-// --- 9. INTERACTIE (RSVP & Chat - zonder XP) ---
-
-export async function toggleRsvp(eventId: string, status: 'going' | 'interested' | 'cant') {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-  
-    const { error } = await supabase
-      .from('rsvps')
-      .upsert({
-        event_id: eventId,
-        user_id: user.id,
-        status: status,
-        last_read_at: new Date().toISOString()
-      }, { onConflict: 'event_id, user_id' })
-  
-    if (error) {
-        console.error('RSVP Error:', error)
-        return { success: false }
-    }
-  
-    revalidatePath('/')
-    return { success: true }
-}
-
-export async function markAsRead(eventId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-
-  await supabase
-    .from('rsvps')
-    .update({ last_read_at: new Date().toISOString() })
-    .eq('event_id', eventId)
-    .eq('user_id', user.id)
-  
-  revalidatePath('/')
-}
-
-export async function sendChatMessage(eventId: string, message: string) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    if (!message.trim()) return
-
-    const { error } = await supabase
-        .from('event_chats')
-        .insert({
-            event_id: eventId,
-            user_id: user.id,
-            message: message.trim()
-        })
-    
-    if (error) return { success: false }
-
-    await supabase
-        .from('events')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', eventId)
-
-    revalidatePath('/')
-    return { success: true }
-}
-
-export async function updateAvatar(formData: FormData) {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const file = formData.get('avatar') as File
-  if (!file) return
-
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${user.id}-${Date.now()}.${fileExt}`
-
-  const { error: uploadError } = await supabase
-    .storage
-    .from('avatars')
-    .upload(fileName, file, { upsert: true })
-
-  if (uploadError) {
-    console.error('Upload error:', uploadError)
-    throw new Error('Kon afbeelding niet uploaden')
-  }
-
-  const { data: { publicUrl } } = supabase
-    .storage
-    .from('avatars')
-    .getPublicUrl(fileName)
-
-  await supabase
-    .from('profiles')
-    .update({ avatar_url: publicUrl })
-    .eq('id', user.id)
-
-  revalidatePath('/profile')
-}
-
-export async function unsubscribeUser(userId: string) {
-    // Alleen hier hebben we Supabase Admin nog nodig als je newsletter_subscribed wilt aanpassen buiten de RLS rules om
-    // Je zou hier ook gewoon createClient kunnen gebruiken afhankelijk van je RLS
-    // Ik heb de import vervangen door direct gebruik indien nodig
-    const { createClient: createAdmin } = await import('@supabase/supabase-js')
-    const supabaseAdmin = createAdmin(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-  
-    const { error } = await supabaseAdmin
-      .from('profiles')
-      .update({ newsletter_subscribed: false })
-      .eq('id', userId)
-  
-    if (error) {
-      console.error('Unsubscribe failed:', error)
-      return { success: false, error: error.message }
-    }
-  
-    return { success: true }
-}
-
-export async function getGroupMembers(groupId: string) {
-  const supabase = await createClient()
-  
-  const { data, error } = await supabase
-    .from('group_members')
-    .select(`
-      user_id,
-      profiles (
-        full_name,
-        avatar_url,
-        xp_points,
-        events_created,
-        messages_count
-      )
-    `)
-    .eq('group_id', groupId)
-
-  if (error) {
-    console.error('Error fetching members:', error)
-    return []
-  }
-
-  return data.map((member: any) => ({
-    id: member.user_id,
-    ...member.profiles
-  }))
 }
