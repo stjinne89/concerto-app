@@ -67,7 +67,6 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
         setLoading(false)
     }
 
-    // --- NIEUW: Functie om achteraf aanwezigheid aan te geven ---
     const handleSetAttending = async () => {
         setLoading(true)
         const { error } = await supabase
@@ -79,7 +78,7 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
             }, { onConflict: 'event_id, user_id' })
 
         if (!error) {
-            router.refresh() // Herlaadt de data, isAttending wordt true!
+            router.refresh()
         } else {
             console.error('Kon RSVP niet updaten:', error)
             alert('Er ging iets mis bij het aanpassen van je aanwezigheid.')
@@ -122,7 +121,6 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
                     <div className="text-[10px] text-slate-500 italic px-2">
                         Alleen aanwezigen kunnen raten
                     </div>
-                    {/* NIEUW: Knop om achteraf aanwezigheid aan te geven */}
                     <button 
                         onClick={handleSetAttending}
                         disabled={loading}
@@ -133,83 +131,99 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
                 </div>
             )}
 
-            {/* DE OVERLAY (MODAL) */}
+            {/* DE OVERLAY (MODAL) - AANGEPAST VOOR DOMINANTIE */}
             {isOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
+                // Wrapper voor de gehele modal laag om overflow te regelen
+                <div className="fixed inset-0 z-[100] overflow-y-auto">
                     
-                    <div className="relative bg-slate-900 border border-white/10 w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+                    {/* Backdrop Laag: Een aparte, zeer donkere en geblurde achtergrond die de hele viewport vult */}
+                    <div 
+                        className="fixed inset-0 bg-black/80 backdrop-blur-md z-[101] transition-opacity" 
+                        aria-hidden="true"
+                        onClick={() => setIsOpen(false)} // Sluit modal bij klikken op achtergrond
+                    />
+
+                    {/* Content Wrapper Laag: Positioneert de modal box boven de backdrop */}
+                    <div className="flex min-h-full items-center justify-center p-4 text-center z-[102] relative">
                         
-                        <button onClick={() => setIsOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-                            <X size={20} />
-                        </button>
-
-                        <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-bold">
-                            Rate {eventType}
-                        </p>
-                        <h3 className="text-xl font-black text-white mb-6 tracking-tight leading-tight">
-                            Hoe was het bij <span className="text-violet-400">{eventName}</span>?
-                        </h3>
-
-                        <div className="space-y-7">
-                            {/* Vraag 1 */}
-                            <div>
-                                <div className="flex justify-between mb-2 items-end">
-                                    <label className="font-bold text-slate-200 text-lg">{criteria[0].label}</label>
-                                    <span className="text-violet-400 font-mono font-bold text-lg">{scores.c1 > 0 ? scores.c1 : '-'}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mb-2">{criteria[0].description}</p>
-                                <WoepRating value={scores.c1} onChange={(v) => setScores({...scores, c1: v})} size={44} />
-                            </div>
-
-                            {/* Vraag 2 */}
-                            <div>
-                                <div className="flex justify-between mb-2 items-end">
-                                    <label className="font-bold text-slate-200 text-lg">{criteria[1].label}</label>
-                                    <span className="text-violet-400 font-mono font-bold text-lg">{scores.c2 > 0 ? scores.c2 : '-'}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mb-2">{criteria[1].description}</p>
-                                <WoepRating value={scores.c2} onChange={(v) => setScores({...scores, c2: v})} size={44} />
-                            </div>
-
-                            {/* Vraag 3 */}
-                            <div>
-                                <div className="flex justify-between mb-2 items-end">
-                                    <label className="font-bold text-slate-200 text-lg">{criteria[2].label}</label>
-                                    <span className="text-violet-400 font-mono font-bold text-lg">{scores.c3 > 0 ? scores.c3 : '-'}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mb-2">{criteria[2].description}</p>
-                                <WoepRating value={scores.c3} onChange={(v) => setScores({...scores, c3: v})} size={44} />
-                            </div>
-
-                            {/* Commentaar */}
-                            <div>
-                                <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Opmerking (Optioneel)</label>
-                                <textarea 
-                                    value={comment}
-                                    onChange={(e) => setComment(e.target.value)}
-                                    className="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                                    placeholder="Wat bleef je het meeste bij?"
-                                    rows={2}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Footer Score & Save */}
-                        <div className="mt-8 pt-4 border-t border-white/5 flex items-center justify-between">
-                            <div>
-                                <div className="text-[10px] uppercase text-slate-500 font-bold">Jouw Totaal</div>
-                                <div className="text-3xl font-black text-white">{myAverage} <span className="text-sm font-bold text-violet-400 uppercase">WoepScore</span></div>
-                            </div>
-                            <button 
-                                onClick={handleSave}
-                                disabled={loading}
-                                className="bg-violet-600 hover:bg-violet-500 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(124,58,237,0.3)] disabled:opacity-50 transition-all hover:scale-105"
-                            >
-                                <Save size={18} /> {loading ? '...' : 'Opslaan'}
+                        {/* De Eigenlijke Modal Box */}
+                        <div 
+                            className="relative bg-slate-900 border border-white/10 w-full max-w-md rounded-3xl p-6 text-left shadow-2xl animate-in zoom-in-95"
+                            // BELANGRIJK: Zorg dat klikken BINNEN de box niet doorstromen naar de backdrop closer
+                            onClick={(e) => e.stopPropagation()} 
+                        >
+                            
+                            <button onClick={() => setIsOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white z-10">
+                                <X size={20} />
                             </button>
-                        </div>
 
+                            <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-bold">
+                                Rate {eventType}
+                            </p>
+                            <h3 className="text-xl font-black text-white mb-6 tracking-tight leading-tight">
+                                Hoe was het bij <span className="text-violet-400">{eventName}</span>?
+                            </h3>
+
+                            <div className="space-y-7">
+                                {/* Vraag 1 */}
+                                <div>
+                                    <div className="flex justify-between mb-2 items-end">
+                                        <label className="font-bold text-slate-200 text-lg">{criteria[0].label}</label>
+                                        <span className="text-violet-400 font-mono font-bold text-lg">{scores.c1 > 0 ? scores.c1 : '-'}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-2">{criteria[0].description}</p>
+                                    <WoepRating value={scores.c1} onChange={(v) => setScores({...scores, c1: v})} size={44} />
+                                </div>
+
+                                {/* Vraag 2 */}
+                                <div>
+                                    <div className="flex justify-between mb-2 items-end">
+                                        <label className="font-bold text-slate-200 text-lg">{criteria[1].label}</label>
+                                        <span className="text-violet-400 font-mono font-bold text-lg">{scores.c2 > 0 ? scores.c2 : '-'}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-2">{criteria[1].description}</p>
+                                    <WoepRating value={scores.c2} onChange={(v) => setScores({...scores, c2: v})} size={44} />
+                                </div>
+
+                                {/* Vraag 3 */}
+                                <div>
+                                    <div className="flex justify-between mb-2 items-end">
+                                        <label className="font-bold text-slate-200 text-lg">{criteria[2].label}</label>
+                                        <span className="text-violet-400 font-mono font-bold text-lg">{scores.c3 > 0 ? scores.c3 : '-'}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-2">{criteria[2].description}</p>
+                                    <WoepRating value={scores.c3} onChange={(v) => setScores({...scores, c3: v})} size={44} />
+                                </div>
+
+                                {/* Commentaar */}
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Opmerking (Optioneel)</label>
+                                    <textarea 
+                                        value={comment}
+                                        onChange={(e) => setComment(e.target.value)}
+                                        className="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-violet-500"
+                                        placeholder="Wat bleef je het meeste bij?"
+                                        rows={2}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Footer Score & Save */}
+                            <div className="mt-8 pt-4 border-t border-white/5 flex items-center justify-between">
+                                <div>
+                                    <div className="text-[10px] uppercase text-slate-500 font-bold">Jouw Totaal</div>
+                                    <div className="text-3xl font-black text-white">{myAverage} <span className="text-sm font-bold text-violet-400 uppercase">WoepScore</span></div>
+                                </div>
+                                <button 
+                                    onClick={handleSave}
+                                    disabled={loading}
+                                    className="bg-violet-600 hover:bg-violet-500 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(124,58,237,0.3)] disabled:opacity-50 transition-all hover:scale-105"
+                                >
+                                    <Save size={18} /> {loading ? '...' : 'Opslaan'}
+                                </button>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
             )}
