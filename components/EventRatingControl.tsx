@@ -10,7 +10,7 @@ import { getCriteriaForEvent } from '@/utils/ratingConfig'
 type Props = {
     eventId: string
     userId: string
-    eventName: string // <--- NIEUW
+    eventName: string
     eventType: string
     initialRating: any | null 
     allRatings: any[] 
@@ -67,6 +67,26 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
         setLoading(false)
     }
 
+    // --- NIEUW: Functie om achteraf aanwezigheid aan te geven ---
+    const handleSetAttending = async () => {
+        setLoading(true)
+        const { error } = await supabase
+            .from('rsvps')
+            .upsert({
+                event_id: eventId,
+                user_id: userId,
+                status: 'going'
+            }, { onConflict: 'event_id, user_id' })
+
+        if (!error) {
+            router.refresh() // Herlaadt de data, isAttending wordt true!
+        } else {
+            console.error('Kon RSVP niet updaten:', error)
+            alert('Er ging iets mis bij het aanpassen van je aanwezigheid.')
+        }
+        setLoading(false)
+    }
+
     return (
         <div className="flex flex-col items-end gap-2">
             
@@ -98,8 +118,18 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
                     )}
                 </button>
             ) : (
-                <div className="text-[10px] text-slate-500 italic px-2">
-                    Alleen aanwezigen kunnen raten
+                <div className="flex flex-col items-end gap-1.5">
+                    <div className="text-[10px] text-slate-500 italic px-2">
+                        Alleen aanwezigen kunnen raten
+                    </div>
+                    {/* NIEUW: Knop om achteraf aanwezigheid aan te geven */}
+                    <button 
+                        onClick={handleSetAttending}
+                        disabled={loading}
+                        className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-50"
+                    >
+                        {loading ? 'Bezig...' : 'Ik was hier! (Markeer als aanwezig)'}
+                    </button>
                 </div>
             )}
 
@@ -114,7 +144,6 @@ export default function EventRatingControl({ eventId, userId, eventName, eventTy
                             <X size={20} />
                         </button>
 
-                        {/* HIER IS DE VOLGORDE OMGEDRAAID & NAAM TOEGEVOEGD */}
                         <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-bold">
                             Rate {eventType}
                         </p>
