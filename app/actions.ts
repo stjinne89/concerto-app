@@ -181,6 +181,23 @@ export async function deleteEvent(eventId: string) {
 
 // --- 4. GROEPEN & LEDEN ---
 
+export async function getGroupName(groupId: string) {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('groups')
+    .select('name') // Of 'title', afhankelijk van hoe de kolom heet in je Supabase database
+    .eq('id', groupId)
+    .single()
+
+  if (error || !data) {
+    console.error('Error fetching group name:', error)
+    return null
+  }
+
+  return data.name
+}
+
 export async function joinGroupWithCode(formData: FormData) {
   const code = formData.get('code') as string
   const supabase = await createClient()
